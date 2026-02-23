@@ -49,3 +49,4 @@ coverage/
 
 # === Others ===
 CLAUDE.md
+docs/*.md
