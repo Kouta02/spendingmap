@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Salarial - Analista Senado Federal</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel para compilar JSX no navegador -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { background-color: #f8fafc; }
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .modal-enter { animation: modalPop 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes modalPop { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        
+        /* Custom Checkbox Style */
+        .checkbox-wrapper input:checked + div { background-color: #2563eb; border-color: #2563eb; }
+        .checkbox-wrapper input:checked + div svg { display: block; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+
+        const Icon = ({ name, size = 24, className, onClick }) => {
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [name]);
+            return <i data-lucide={name} width={size} height={size} className={className} onClick={onClick}></i>;
+        };
+
+        const App = () => {
+            // --- DADOS DO PL E BENEFÍCIOS ---
+            const ANALISTA_SALARIES = {
+                45: { "2026": 13753.64, "2027": 17618.41, "2028": 22569.18, "2029": 24181.07 },
+                44: { "2026": 13341.03, "2027": 17089.85, "2028": 21892.10, "2029": 23455.64 },
+                43: { "2026": 12940.78, "2027": 16577.14, "2028": 21235.31, "2029": 22751.94 },
+                42: { "2026": 12552.57, "2027": 16079.84, "2028": 20598.28, "2029": 22069.41 },
+                41: { "2026": 12175.98, "2027": 15597.43, "2028": 19980.31, "2029": 21407.31 },
+                40: { "2026": 11810.70, "2027": 15129.51, "2028": 19380.91, "2029": 20765.09 },
+                39: { "2026": 11456.37, "2027": 14675.61, "2028": 18799.45, "2029": 20142.11 },
+                38: { "2026": 11112.68, "2027": 14235.34, "2028": 18235.47, "2029": 19537.84 },
+                37: { "2026": 10779.29, "2027": 13808.28, "2028": 17688.40, "2029": 18951.71 },
+                36: { "2026": 10455.93, "2027": 13394.05, "2028": 17157.78, "2029": 18383.18 }
+            };
+
+            const GAL_FACTORS = { "2026": 1.20, "2027": 1.13, "2028": 0.74, "2029": 0.74 };
+            
+            // Fatores FC (Sobre Padrão 45)
+            const FC_FACTORS = {
+                "FC-1": { "2026": 0.23, "2027": 0.20, "2028": 0.16, "2029": 0.16 },
+                "FC-2": { "2026": 0.37, "2027": 0.31, "2028": 0.27, "2029": 0.27 },
+                "FC-3": { "2026": 0.44, "2027": 0.52, "2028": 0.37, "2029": 0.37 },
+                "FC-4": { "2026": 0.66, "2027": 0.56, "2028": 0.47, "2029": 0.47 },
+                "FC-5": { "2026": 0.80, "2027": 0.68, "2028": 0.57, "2029": 0.57 },
+                "FC-6": { "2026": 0.90, "2027": 0.77, "2028": 0.62, "2029": 0.62 },
+                "FC-7": { "2026": 0.85, "2027": 1.00, "2028": 0.67, "2029": 0.67 }
+            };
+
+            const VAL_PADRAO_45_2026 = 13753.64;
+            const GR_FACTOR_2026 = 1.10;
+            const FC2_2026_FACTOR = 0.37;
+            const TETO_INSS_2026 = 8475.55; 
+            const TETO_CONSTITUCIONAL = 46366.19;
+            const DED_DEPENDENTE_IR = 189.59;
+            const VALE_ALIMENTACAO = 1833.54;
+
+            // --- ESTADO ---
+            const [regime, setRegime] = useState('RPC'); 
+            const [padraoInicial, setPadraoInicial] = useState(36);
+            const [gdaePerc, setGdaePerc] = useState(40);
+            const [vpi, setVpi] = useState(84.08);
+            const [numFilhos, setNumFilhos] = useState(0);
+            const [temCreche, setTemCreche] = useState(false);
+            const [dependentesIR, setDependentesIR] = useState(0);
+            const [usaFunpresp, setUsaFunpresp] = useState(false);
+            const [funprespPerc, setFunprespPerc] = useState(8.5);
+            const [temAeq, setTemAeq] = useState(false);
+            const [aeqPerc, setAeqPerc] = useState(15);
+            const [comProgressao, setComProgressao] = useState(false);
+            const [expandCareer, setExpandCareer] = useState(false);
+            const [modalYear, setModalYear] = useState(null);
+            const [selectedFC, setSelectedFC] = useState("");
+            
+            // Estado de Aprovação das Tabelas
+            const [approvedYears, setApprovedYears] = useState({
+                "2026": true,
+                "2027": false,
+                "2028": false,
+                "2029": false
+            });
+
+            // --- LÓGICA DE CÁLCULO ---
+            const formatBRL = (val) => val.toLocaleString('pt-br', { style: 'currency', currency: 'BRL' });
+
+            const getEffectiveYearKey = (targetYear) => {
+                const target = parseInt(targetYear);
+                // Se o ano alvo é futuro (ex: 2030), começa checando de 2029 pra trás
+                let searchStart = target > 2029 ? 2029 : target;
+
+                for (let y = searchStart; y >= 2026; y--) {
+                    const yStr = y.toString();
+                    if (approvedYears[yStr]) {
+                        return yStr;
+                    }
+                }
+                return "2026"; // Fallback seguro
+            };
+
+            const calculatePSS = (base, tipoRegime) => {
+                let baseCalc = base;
+                if (tipoRegime === 'RPC') {
+                    baseCalc = Math.min(base, TETO_INSS_2026);
+                }
+
+                const f1 = 1518.00;
+                const f2 = 2793.88;
+                const f3 = 4190.83;
+                const f4 = TETO_INSS_2026; 
+                const f5 = 13969.48;
+                const f6 = 27938.95;
+                const f7 = 54480.97;
+
+                let pss = 0;
+                if (baseCalc > 0) pss += Math.min(baseCalc, f1) * 0.075;
+                if (baseCalc > f1) pss += (Math.min(baseCalc, f2) - f1) * 0.09;
+                if (baseCalc > f2) pss += (Math.min(baseCalc, f3) - f2) * 0.12;
+                if (baseCalc > f3) pss += (Math.min(baseCalc, f4) - f3) * 0.14;
+
+                if (tipoRegime === 'ANTIGO') {
+                    if (baseCalc > f4) pss += (Math.min(baseCalc, f5) - f4) * 0.145;
+                    if (baseCalc > f5) pss += (Math.min(baseCalc, f6) - f5) * 0.165;
+                    if (baseCalc > f6) pss += (Math.min(baseCalc, f7) - f6) * 0.19;
+                    if (baseCalc > f7) pss += (baseCalc - f7) * 0.22;
+                }
+                return pss;
+            };
+
+            const calculateYear = (yearStr, currentPadrao) => {
+                const effectiveYearKey = getEffectiveYearKey(yearStr);
+                
+                const base = ANALISTA_SALARIES[currentPadrao][effectiveYearKey];
+                const baseTop = ANALISTA_SALARIES[45][effectiveYearKey];
+                
+                const gal = baseTop * GAL_FACTORS[effectiveYearKey];
+                
+                let gr = 0;
+                if (effectiveYearKey === "2026") {
+                    gr = VAL_PADRAO_45_2026 * FC2_2026_FACTOR * GR_FACTOR_2026;
+                } else {
+                    gr = 0; 
+                }
+
+                const gdae = base * (gdaePerc / 100);
+                const valAeq = temAeq ? (base * (aeqPerc / 100)) : 0;
+                const valVpi = vpi || 0;
+                const valCreche = temCreche ? (numFilhos * 1288.42) : 0;
+                const valAlimentacao = VALE_ALIMENTACAO;
+
+                let valFC = 0;
+                if (selectedFC && FC_FACTORS[selectedFC]) {
+                    valFC = baseTop * FC_FACTORS[selectedFC][effectiveYearKey];
+                }
+
+                const totalRemuneratorio = base + gal + gr + gdae + valAeq + valVpi + valFC;
+
+                let abateTeto = 0;
+                if (totalRemuneratorio > TETO_CONSTITUCIONAL) {
+                    abateTeto = totalRemuneratorio - TETO_CONSTITUCIONAL;
+                }
+
+                const remunEfetiva = totalRemuneratorio - abateTeto;
+                const pss = calculatePSS(remunEfetiva, regime);
+
+                let valFunpresp = 0;
+                if (usaFunpresp && remunEfetiva > TETO_INSS_2026) {
+                    valFunpresp = (remunEfetiva - TETO_INSS_2026) * (funprespPerc / 100);
+                }
+
+                const baseIR = remunEfetiva - pss - valFunpresp - (dependentesIR * DED_DEPENDENTE_IR);
+                let irpf = 0;
+                if (baseIR > 4664.68) irpf = baseIR * 0.275 - 893.66;
+                else if (baseIR > 3751.06) irpf = baseIR * 0.225 - 662.77;
+                else if (baseIR > 2826.66) irpf = baseIR * 0.15 - 381.44;
+                else if (baseIR > 2259.20) irpf = baseIR * 0.075 - 169.44;
+
+                const brutoTotalDisplay = totalRemuneratorio + valCreche + valAlimentacao;
+                const liquido = brutoTotalDisplay - abateTeto - pss - irpf - valFunpresp;
+
+                return { 
+                    brutoTotalDisplay, 
+                    base, gal, gr, gdae, valAeq, valVpi, valFC,
+                    valCreche, valAlimentacao, 
+                    abateTeto, pss, valFunpresp, irpf, liquido, currentPadrao,
+                    effectiveYearKey
+                };
+            };
+
+            const yearsData = useMemo(() => {
+                let years = ["2026", "2027", "2028", "2029"];
+
+                if (expandCareer && comProgressao) {
+                    let currentYearInt = 2030;
+                    let lastPadrao = Math.min(padraoInicial + 3, 45); 
+                    while (lastPadrao < 45 && currentYearInt < 2045) {
+                        years.push(currentYearInt.toString());
+                        currentYearInt++;
+                        lastPadrao++;
+                    }
+                    years.push(currentYearInt.toString());
+                }
+
+                return years.map((y, idx) => {
+                    const currentPadrao = comProgressao ? Math.min(padraoInicial + idx, 45) : padraoInicial;
+                    return { year: y, ...calculateYear(y, currentPadrao) };
+                });
+            }, [padraoInicial, gdaePerc, vpi, numFilhos, temCreche, dependentesIR, usaFunpresp, funprespPerc, temAeq, aeqPerc, comProgressao, expandCareer, regime, selectedFC, approvedYears]);
+
+            const toggleRegime = (newRegime) => {
+                setRegime(newRegime);
+                if (newRegime === 'ANTIGO') {
+                    setUsaFunpresp(false);
+                } else {
+                    setUsaFunpresp(true);
+                }
+            };
+
+            const toggleApproval = (year) => {
+                setApprovedYears(prev => ({
+                    ...prev,
+                    [year]: !prev[year]
+                }));
+            };
+
+            return (
+                <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-4 md:p-8 fade-in relative">
+                    <div className="max-w-7xl mx-auto">
+                        
+                        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                            <div>
+                                <h1 className="text-3xl font-black text-slate-800 flex items-center gap-2">
+                                    <Icon name="trending-up" className="text-blue-600" /> Simulador Analista Legislativo
+                                </h1>
+                                <p className="text-slate-500 font-medium">Senado Federal • PL 2025</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <div className="bg-white px-3 py-1.5 rounded-xl shadow-sm border border-slate-200 text-[10px] font-black text-slate-600 flex items-center gap-2 uppercase tracking-wider">
+                                    <Icon name="lock" size={12} className="text-blue-500" /> Teto INSS: {formatBRL(TETO_INSS_2026)}
+                                </div>
+                                <div className="bg-white px-3 py-1.5 rounded-xl shadow-sm border border-slate-200 text-[10px] font-black text-red-600 flex items-center gap-2 uppercase tracking-wider">
+                                    <Icon name="scissors" size={12} className="text-red-500" /> Teto STF: {formatBRL(TETO_CONSTITUCIONAL)}
+                                </div>
+                            </div>
+                        </header>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                            
+                            <aside className="lg:col-span-1 space-y-4">
+                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                                    <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-blue-700">
+                                        <Icon name="calculator" size={20} /> Configuração
+                                    </h2>
+
+                                    {/* STATUS APROVAÇÃO */}
+                                    <div className="mb-6 border-b border-slate-100 pb-4">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Status Aprovação (Tabelas)</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {["2026", "2027", "2028", "2029"].map(year => (
+                                                <label key={year} className="checkbox-wrapper flex items-center gap-2 cursor-pointer bg-slate-50 p-2 rounded-lg border border-slate-100 hover:border-blue-200 transition-colors">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={approvedYears[year]} 
+                                                        onChange={() => toggleApproval(year)}
+                                                        className="hidden"
+                                                    />
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${approvedYears[year] ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'}`}>
+                                                        <svg className="w-3 h-3 text-white hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                                                    </div>
+                                                    <span className={`text-xs font-bold ${approvedYears[year] ? 'text-blue-700' : 'text-slate-400 line-through'}`}>{year}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* SELETOR DE REGIME */}
+                                    <div className="bg-slate-100 p-1 rounded-xl flex mb-6">
+                                        <button 
+                                            onClick={() => toggleRegime('RPC')}
+                                            className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${regime === 'RPC' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Novo (RPC)
+                                        </button>
+                                        <button 
+                                            onClick={() => toggleRegime('ANTIGO')}
+                                            className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${regime === 'ANTIGO' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Antigo
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-6">
+                                        {/* Padrão */}
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Padrão Inicial</label>
+                                            <select 
+                                                value={padraoInicial} 
+                                                onChange={(e) => setPadraoInicial(Number(e.target.value))}
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                            >
+                                                {Object.keys(ANALISTA_SALARIES).reverse().map(p => (
+                                                    <option key={p} value={p}>Padrão {p}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* Progressão */}
+                                        <div 
+                                            onClick={() => {
+                                                const newState = !comProgressao;
+                                                setComProgressao(newState);
+                                                if (!newState) setExpandCareer(false);
+                                            }}
+                                            className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${comProgressao ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200'}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <Icon name="fast-forward" className={comProgressao ? 'text-indigo-600' : 'text-slate-400'} size={20} />
+                                                <div>
+                                                    <p className={`text-xs font-black uppercase ${comProgressao ? 'text-indigo-900' : 'text-slate-500'}`}>Progressão</p>
+                                                    <p className="text-[10px] text-slate-500 font-medium">+1 padrão / ano</p>
+                                                </div>
+                                            </div>
+                                            <div className={`w-10 h-5 rounded-full relative transition-colors ${comProgressao ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                                                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${comProgressao ? 'left-6' : 'left-1'}`} />
+                                            </div>
+                                        </div>
+
+                                        {/* FC Selector */}
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Função Comissionada</label>
+                                            <select 
+                                                value={selectedFC} 
+                                                onChange={(e) => setSelectedFC(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 font-bold text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                            >
+                                                <option value="">Nenhuma</option>
+                                                <option value="FC-1">FC-1</option>
+                                                <option value="FC-2">FC-2</option>
+                                                <option value="FC-3">FC-3</option>
+                                                <option value="FC-4">FC-4</option>
+                                                <option value="FC-5">FC-5</option>
+                                                <option value="FC-6">FC-6</option>
+                                                <option value="FC-7">FC-7</option>
+                                            </select>
+                                        </div>
+
+                                        {/* AEQ */}
+                                        <div className={`p-4 rounded-2xl border transition-all space-y-3 ${temAeq ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                                            <div className="flex items-center justify-between">
+                                                <label className={`text-sm font-black flex items-center gap-2 ${temAeq ? 'text-amber-900' : 'text-slate-500'}`}>
+                                                    <Icon name="award" size={18} /> Adicional (AEQ)
+                                                </label>
+                                                <button onClick={() => setTemAeq(!temAeq)} className={`w-10 h-5 rounded-full relative transition-colors ${temAeq ? 'bg-amber-600' : 'bg-slate-300'}`}>
+                                                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${temAeq ? 'left-6' : 'left-1'}`} />
+                                                </button>
+                                            </div>
+                                            {temAeq && (
+                                                <div className="space-y-2 pt-2 border-t border-amber-100">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Nível do Adicional</span>
+                                                        <span className="text-lg font-black text-amber-600 bg-amber-100 px-2 rounded-md">{aeqPerc}%</span>
+                                                    </div>
+                                                    <input 
+                                                        type="range" min="0" max="30" step="1" 
+                                                        value={aeqPerc} 
+                                                        onChange={(e) => setAeqPerc(Number(e.target.value))} 
+                                                        className="w-full h-2 bg-amber-200 rounded-lg appearance-none cursor-pointer accent-amber-600" 
+                                                    />
+                                                    <div className="flex justify-between text-[9px] text-amber-500 font-medium px-1">
+                                                        <span>0%</span>
+                                                        <span>15%</span>
+                                                        <span>30%</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* GDAE */}
+                                        <div>
+                                            <div className="flex justify-between mb-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">GDAE (Desempenho)</label>
+                                                <span className="text-sm font-black text-blue-600">{gdaePerc}%</span>
+                                            </div>
+                                            <input 
+                                                type="range" min="40" max="100" step="5" 
+                                                value={gdaePerc} 
+                                                onChange={(e) => setGdaePerc(Number(e.target.value))}
+                                                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                            />
+                                        </div>
+
+                                        {/* VPI */}
+                                        <div>
+                                            <div className="flex justify-between mb-2">
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">VPI (R$)</label>
+                                            </div>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-2 text-slate-400 text-sm font-bold">R$</span>
+                                                <input 
+                                                    type="number" 
+                                                    value={vpi} 
+                                                    onChange={(e) => setVpi(Number(e.target.value))}
+                                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 pl-9 font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Dependentes */}
+                                        <div className="space-y-4">
+                                            <div className="flex flex-col gap-4">
+                                                <div className="flex-1">
+                                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Dep. Imposto Renda</label>
+                                                    <input type="number" min="0" value={dependentesIR} onChange={(e) => setDependentesIR(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold text-sm outline-none" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Filhos (Creche)</label>
+                                                    <div className="flex items-center gap-2">
+                                                        <button onClick={() => setTemCreche(!temCreche)} className={`p-2 rounded-xl border ${temCreche ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                                            <Icon name="baby" size={16} />
+                                                        </button>
+                                                        {temCreche && <input type="number" min="1" value={numFilhos} onChange={(e) => setNumFilhos(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold text-sm outline-none" />}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Funpresp */}
+                                        <div className={`p-4 rounded-2xl border transition-all space-y-3 ${usaFunpresp ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                                            <div className="flex items-center justify-between">
+                                                <label className={`text-sm font-black flex items-center gap-2 ${usaFunpresp ? 'text-emerald-900' : 'text-slate-500'}`}>
+                                                    <Icon name="shield-check" size={18} /> Funpresp-Exe
+                                                </label>
+                                                <button onClick={() => setUsaFunpresp(!usaFunpresp)} className={`w-10 h-5 rounded-full relative transition-colors ${usaFunpresp ? 'bg-emerald-600' : 'bg-slate-300'}`}>
+                                                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${usaFunpresp ? 'left-6' : 'left-1'}`} />
+                                                </button>
+                                            </div>
+                                            {usaFunpresp && (
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between text-[11px] text-emerald-700 font-black"><span>Contribuição:</span><span>{funprespPerc}%</span></div>
+                                                    <input type="range" min="7.5" max="8.5" step="0.5" value={funprespPerc} onChange={(e) => setFunprespPerc(Number(e.target.value))} className="w-full accent-emerald-600" />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </aside>
+
+                            {/* DASHBOARD */}
+                            <main className="lg:col-span-3 space-y-6">
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {yearsData.map((data, idx) => (
+                                        <div key={data.year} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 relative group transition-all hover:shadow-md">
+                                            
+                                            <button 
+                                                onClick={() => setModalYear(data.year)}
+                                                className="absolute top-4 right-4 text-slate-300 hover:text-blue-500 transition-colors p-1"
+                                                title="Ver Tabela Completa do Ano"
+                                            >
+                                                <Icon name="list" size={20} />
+                                            </button>
+
+                                            {data.abateTeto > 0 && (
+                                                <div className="absolute top-4 right-12 text-[10px] font-bold text-red-500 bg-red-50 px-2 py-1 rounded-full flex items-center gap-1 border border-red-100">
+                                                    <Icon name="scissors" size={10} /> Teto Aplicado
+                                                </div>
+                                            )}
+
+                                            <div className="relative flex justify-between items-start mb-6">
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md uppercase tracking-tighter">Padrão {data.currentPadrao}</span>
+                                                        {data.currentPadrao === 45 && <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md uppercase tracking-tighter">Topo</span>}
+                                                    </div>
+                                                    <h3 className="text-3xl font-black text-slate-800 flex gap-2 items-end">
+                                                        {data.year}
+                                                        {data.effectiveYearKey !== data.year && (
+                                                            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-lg font-bold mb-1">Base: {data.effectiveYearKey}</span>
+                                                        )}
+                                                    </h3>
+                                                </div>
+                                                <div className="text-right mt-8">
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-tighter">Líquido Estimado</p>
+                                                    <p className="text-2xl font-black text-blue-700">{formatBRL(data.liquido)}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <div className="flex justify-between text-sm py-2 border-b border-slate-50 font-medium">
+                                                    <span className="text-slate-500">Remuneração Bruta Total</span>
+                                                    <span className="text-slate-700">{formatBRL(data.brutoTotalDisplay)}</span>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-2 mt-2">
+                                                    <div className="bg-emerald-50/50 p-2.5 rounded-2xl border border-emerald-100">
+                                                        <p className="text-[9px] font-bold text-emerald-800 uppercase">Proventos</p>
+                                                        <p className="text-sm font-black text-emerald-600">+{formatBRL(data.brutoTotalDisplay)}</p>
+                                                    </div>
+                                                    <div className="bg-red-50/50 p-2.5 rounded-2xl border border-red-100">
+                                                        <p className="text-[9px] font-bold text-red-800 uppercase">Descontos Total</p>
+                                                        <p className="text-sm font-black text-red-500">-{formatBRL(data.pss + data.irpf + data.valFunpresp + data.abateTeto)}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="pt-4">
+                                                    <details className="group/details">
+                                                        <summary className="list-none flex items-center justify-center gap-2 text-xs font-bold text-slate-400 cursor-pointer hover:text-blue-500 transition-colors uppercase tracking-widest">
+                                                            Ver Extrato {regime} <Icon name="chevron-right" size={14} className="group-open/details:rotate-90 transition-transform" />
+                                                        </summary>
+                                                        <div className="mt-4 space-y-2 text-[11px] bg-slate-50 p-4 rounded-2xl border border-slate-100 font-medium text-slate-600">
+                                                            <div className="flex justify-between"><span>Vencimento Básico:</span><span className="font-mono text-slate-900">{formatBRL(data.base)}</span></div>
+                                                            <div className="flex justify-between"><span>GAL (Fator Carreira):</span><span className="font-mono text-slate-900">{formatBRL(data.gal)}</span></div>
+                                                            {data.gr > 0 && <div className="flex justify-between"><span>GR ({data.effectiveYearKey === "2026" ? "Ativa" : "Inativa"}):</span><span className="font-mono text-slate-900">{formatBRL(data.gr)}</span></div>}
+                                                            <div className="flex justify-between"><span>GDAE ({gdaePerc}%):</span><span className="font-mono text-slate-900">{formatBRL(data.gdae)}</span></div>
+                                                            {temAeq && <div className="flex justify-between text-amber-700 font-bold"><span>AEQ ({aeqPerc}%):</span><span className="font-mono">{formatBRL(data.valAeq)}</span></div>}
+                                                            {data.valFC > 0 && <div className="flex justify-between text-indigo-700 font-bold"><span>{selectedFC}:</span><span className="font-mono">{formatBRL(data.valFC)}</span></div>}
+                                                            <div className="flex justify-between text-slate-600"><span>VPI (Vantagem Individual):</span><span className="font-mono">{formatBRL(data.valVpi)}</span></div>
+                                                            
+                                                            <div className="h-px bg-slate-200 my-1" />
+                                                            
+                                                            {data.abateTeto > 0 && (
+                                                                <div className="flex justify-between text-red-600 font-bold bg-red-50 p-1 rounded">
+                                                                    <span className="flex items-center gap-1"><Icon name="scissors" size={10} /> Abate-Teto Constitucional:</span>
+                                                                    <span className="font-mono">-{formatBRL(data.abateTeto)}</span>
+                                                                </div>
+                                                            )}
+
+                                                            <div className="flex justify-between text-orange-600 font-bold"><span>Auxílio Alimentação:</span><span className="font-mono">{formatBRL(data.valAlimentacao)}</span></div>
+                                                            {data.valCreche > 0 && <div className="flex justify-between text-blue-600 font-bold"><span>Aux. Creche:</span><span className="font-mono">{formatBRL(data.valCreche)}</span></div>}
+                                                            
+                                                            <div className="h-px bg-slate-200 my-1" />
+                                                            <div className="flex justify-between text-red-500 font-bold">
+                                                                <span>Previdência (PSS):</span>
+                                                                <span className="font-mono">-{formatBRL(data.pss)}</span>
+                                                            </div>
+                                                            {regime === 'RPC' && <div className="text-[9px] text-slate-400 italic text-right mb-1">Limitado ao Teto INSS</div>}
+                                                            {regime === 'ANTIGO' && <div className="text-[9px] text-slate-400 italic text-right mb-1">Incidência Total (Progressiva)</div>}
+                                                            
+                                                            {data.valFunpresp > 0 && <div className="flex justify-between text-emerald-600 font-bold"><span>Funpresp ({funprespPerc}%):</span><span className="font-mono">-{formatBRL(data.valFunpresp)}</span></div>}
+                                                            <div className="flex justify-between text-red-500 font-bold"><span>Imposto de Renda:</span><span className="font-mono">-{formatBRL(data.irpf)}</span></div>
+                                                        </div>
+                                                    </details>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {comProgressao && (
+                                    <div className="flex justify-center mt-2">
+                                        <button 
+                                            onClick={() => setExpandCareer(!expandCareer)}
+                                            className="flex items-center gap-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 font-bold py-3 px-6 rounded-full shadow-sm hover:shadow-md transition-all uppercase text-xs tracking-widest"
+                                        >
+                                            {expandCareer ? (
+                                                <>
+                                                    <Icon name="chevron-down" size={16} className="rotate-180" /> Recolher Projeção Futura
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Icon name="arrow-right-circle" size={16} className="text-blue-500" /> Simular Restante da Carreira (Até Padrão 45)
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                )}
+
+                                <div className="bg-slate-900 rounded-3xl p-8 text-white shadow-xl flex flex-col md:flex-row items-center gap-8 border border-slate-800">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse" />
+                                            <h4 className="text-sm font-black uppercase tracking-widest text-slate-400">
+                                                {regime === 'RPC' ? 'Novo Regime (RPC)' : 'Antigo Regime (Sem Limite)'}
+                                            </h4>
+                                        </div>
+                                        <p className="text-slate-300 text-sm leading-relaxed max-w-lg">
+                                            {regime === 'RPC' ? (
+                                                <>Neste cenário, sua contribuição previdenciária obrigatória (PSS) está limitada ao teto de <span className="text-white font-bold">{formatBRL(calculateYear("2026", 36).pss)}</span>.</>
+                                            ) : (
+                                                <>Neste cenário, o PSS incide sobre a <strong>remuneração total</strong> (respeitado o abate-teto), utilizando alíquotas progressivas que podem chegar a 22% nas faixas superiores.</>
+                                            )}
+                                            <br/><br/>
+                                            <span className="text-amber-300 text-xs font-bold uppercase">Nota:</span> Ao atingir o final da carreira, é comum que a remuneração bruta ultrapasse o Teto Constitucional.
+                                        </p>
+                                    </div>
+                                    <div className="bg-white/5 backdrop-blur-sm p-6 rounded-3xl border border-white/10 text-center min-w-[200px]">
+                                        <p className="text-[10px] uppercase font-black text-slate-500 mb-1">Salário Líquido Final</p>
+                                        <p className="text-4xl font-black text-blue-500">{formatBRL(yearsData[yearsData.length - 1].liquido)}</p>
+                                    </div>
+                                </div>
+
+                            </main>
+                        </div>
+
+                        <footer className="mt-12 pt-8 border-t border-slate-200 text-center">
+                            <p className="text-slate-400 text-[9px] font-black uppercase tracking-[0.2em]">Dashboard Analista Legislativo • v4.2 • Controle de Aprovação</p>
+                        </footer>
+                    </div>
+
+                    {/* MODAL DE TABELA */}
+                    {modalYear && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm fade-in" onClick={() => setModalYear(null)}>
+                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto p-8 relative modal-enter" onClick={e => e.stopPropagation()}>
+                                <button onClick={() => setModalYear(null)} className="absolute top-6 right-6 text-slate-300 hover:text-slate-600 transition-colors">
+                                    <Icon name="x" size={24} />
+                                </button>
+                                
+                                <div className="mb-6">
+                                    <h3 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+                                        <Icon name="table-2" className="text-blue-600" /> Tabela Salarial {modalYear}
+                                    </h3>
+                                    <p className="text-sm text-slate-500 mt-2">
+                                        Detalhamento dos valores <strong>brutos estimados</strong> para todos os padrões neste ano de referência:
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-1 rounded">GDAE: {gdaePerc}%</span>
+                                        <span className="text-[10px] font-bold bg-amber-50 text-amber-600 px-2 py-1 rounded">AEQ: {temAeq ? `${aeqPerc}%` : 'Não'}</span>
+                                        <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-1 rounded">FC: {selectedFC || 'Nenhuma'}</span>
+                                        <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded">VPI: {formatBRL(vpi)}</span>
+                                        <span className="text-[10px] font-bold bg-orange-50 text-orange-600 px-2 py-1 rounded">Alimentação: {formatBRL(VALE_ALIMENTACAO)}</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="overflow-x-auto rounded-xl border border-slate-100">
+                                    <table className="w-full text-xs md:text-sm text-left whitespace-nowrap">
+                                        <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
+                                            <tr>
+                                                <th className="p-3">Padrão</th>
+                                                <th className="p-3 text-right">Vencimento</th>
+                                                <th className="p-3 text-right">GAL</th>
+                                                {/* Exibe coluna GR se o ano base for 2026 */}
+                                                {getEffectiveYearKey(modalYear) === "2026" && <th className="p-3 text-right">GR</th>}
+                                                <th className="p-3 text-right">GDAE</th>
+                                                {temAeq && <th className="p-3 text-right">AEQ</th>}
+                                                {selectedFC && <th className="p-3 text-right">FC</th>}
+                                                <th className="p-3 text-right">VPI</th>
+                                                <th className="p-3 text-right">Alim.</th>
+                                                <th className="p-3 text-right bg-blue-50 text-blue-700">Bruto Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {[45, 44, 43, 42, 41, 40, 39, 38, 37, 36].map(padrao => {
+                                                const dados = calculateYear(modalYear, padrao);
+                                                return (
+                                                    <tr key={padrao} className="hover:bg-blue-50/30 transition-colors">
+                                                        <td className="p-3 font-bold text-slate-700">Padrão {padrao}</td>
+                                                        <td className="p-3 text-right font-mono text-slate-500">{formatBRL(dados.base)}</td>
+                                                        <td className="p-3 text-right font-mono text-slate-500">{formatBRL(dados.gal)}</td>
+                                                        {dados.effectiveYearKey === "2026" && <td className="p-3 text-right font-mono text-slate-500">{formatBRL(dados.gr)}</td>}
+                                                        <td className="p-3 text-right font-mono text-slate-500">{formatBRL(dados.gdae)}</td>
+                                                        {temAeq && <td className="p-3 text-right font-mono text-slate-500 text-amber-600">{formatBRL(dados.valAeq)}</td>}
+                                                        {selectedFC && <td className="p-3 text-right font-mono text-slate-500 text-indigo-600">{formatBRL(dados.valFC)}</td>}
+                                                        <td className="p-3 text-right font-mono text-slate-500">{formatBRL(dados.valVpi)}</td>
+                                                        <td className="p-3 text-right font-mono text-slate-500 text-orange-600">{formatBRL(dados.valAlimentacao)}</td>
+                                                        <td className="p-3 text-right font-mono font-bold text-blue-700 bg-blue-50/50">{formatBRL(dados.brutoTotalDisplay)}</td>
+                                                    </tr>
+                                                )
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-4 italic text-center">
+                                    * O "Bruto Total" considera Vencimento + Gratificações + Adicionais (AEQ/VPI) + FC + Auxílio Alimentação. (Auxílio Creche não incluído nesta tabela geral).
+                                    {getEffectiveYearKey(modalYear) !== modalYear && (
+                                        <>
+                                            <br/> 
+                                            <span className="font-bold text-red-500">
+                                                ** Atenção: Valores baseados na tabela de {getEffectiveYearKey(modalYear)} devido à não aprovação da tabela de {modalYear}. **
+                                            </span>
+                                        </>
+                                    )}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
