@@ -24,12 +24,16 @@ echarts.use([
 import { format, subMonths, addMonths } from 'date-fns';
 import type { EChartsOption } from 'echarts';
 
+import { RouterLink } from '@angular/router';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { DashboardService } from '../../../../core/services/dashboard.service';
+import { GoalService } from '../../../../core/services/goal.service';
 import {
   MonthlySummary,
   CategoryBreakdown,
   BankBreakdown,
   MonthlyEvolution,
+  Goal,
 } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 
@@ -42,7 +46,9 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
     MatIconModule,
     MatButtonModule,
     MatProgressSpinnerModule,
+    MatProgressBarModule,
     NgxEchartsDirective,
+    RouterLink,
     CurrencyBrlPipe,
   ],
   providers: [provideEchartsCore({ echarts })],
@@ -122,6 +128,36 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
           <mat-icon>info</mat-icon>
           <span>Nenhum contracheque salvo para este mês. Gere um snapshot na tela de Contracheque para ver o saldo real.</span>
         </div>
+      }
+
+      <!-- Alertas de Metas -->
+      @if (goalAlerts().length > 0) {
+        <mat-card class="alerts-card">
+          <mat-card-header>
+            <mat-card-title>
+              <mat-icon>warning</mat-icon> Metas
+            </mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            @for (goal of goalAlerts(); track goal.id) {
+              <div class="alert-item" [class]="goal.status">
+                <div class="alert-info">
+                  <span class="alert-name">{{ goal.name }}</span>
+                  <span class="alert-detail">{{ toNum(goal.current_spending) | currencyBrl }} de {{ toNum(goal.amount_limit) | currencyBrl }}</span>
+                </div>
+                <div class="alert-bar">
+                  <mat-progress-bar
+                    [mode]="'determinate'"
+                    [value]="Math.min(goal.percentage, 100)"
+                    [color]="goal.status === 'excedido' ? 'warn' : 'accent'"
+                  />
+                  <span class="alert-pct" [class]="goal.status">{{ goal.percentage }}%</span>
+                </div>
+              </div>
+            }
+            <a mat-button routerLink="/goals" class="ver-todas">Ver todas as metas</a>
+          </mat-card-content>
+        </mat-card>
       }
 
       <!-- Gráficos -->
@@ -298,6 +334,29 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
       height: 200px;
       color: var(--mat-sys-on-surface-variant);
     }
+    .alerts-card {
+      margin-bottom: 24px;
+    }
+    .alerts-card mat-card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #e65100;
+    }
+    .alert-item {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--mat-sys-outline-variant);
+    }
+    .alert-item:last-of-type { border-bottom: none; }
+    .alert-info { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .alert-name { font-weight: 500; font-size: 0.9rem; }
+    .alert-detail { font-size: 0.85rem; font-family: 'Roboto Mono', monospace; color: var(--mat-sys-on-surface-variant); }
+    .alert-bar { display: flex; align-items: center; gap: 8px; }
+    .alert-bar mat-progress-bar { flex: 1; }
+    .alert-pct { font-size: 0.85rem; font-weight: 500; min-width: 45px; text-align: right; }
+    .alert-pct.alerta { color: #ff9800; }
+    .alert-pct.excedido { color: #f44336; }
+    .ver-todas { margin-top: 8px; }
     .loading {
       display: flex;
       justify-content: center;
@@ -307,7 +366,10 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 })
 export class DashboardPage implements OnInit {
   private readonly dashboardService = inject(DashboardService);
+  private readonly goalService = inject(GoalService);
   private readonly currencyPipe = new CurrencyBrlPipe();
+
+  Math = Math;
 
   loading = signal(true);
   currentMonth = signal(format(new Date(), 'yyyy-MM'));
@@ -321,6 +383,7 @@ export class DashboardPage implements OnInit {
   categoryChartOptions = signal<EChartsOption>({});
   bankChartOptions = signal<EChartsOption>({});
   evolutionChartOptions = signal<EChartsOption>({});
+  goalAlerts = signal<Goal[]>([]);
 
   ngOnInit(): void {
     this.updateMonthLabel();
@@ -335,8 +398,13 @@ export class DashboardPage implements OnInit {
     let loaded = 0;
     const checkDone = () => {
       loaded++;
-      if (loaded >= 4) this.loading.set(false);
+      if (loaded >= 5) this.loading.set(false);
     };
+
+    this.goalService.alerts(month).subscribe({
+      next: (data) => { this.goalAlerts.set(data); checkDone(); },
+      error: () => checkDone(),
+    });
 
     this.dashboardService.getSummary(month).subscribe({
       next: (data) => { this.summary.set(data); checkDone(); },

@@ -98,6 +98,20 @@ export const routes: Routes = [
             './features/salary/pages/salary-projection/salary-projection'
           ).then((m) => m.SalaryProjectionPage),
       },
+      {
+        path: 'goals',
+        loadComponent: () =>
+          import('./features/goals/pages/goal-list/goal-list').then(
+            (m) => m.GoalList
+          ),
+      },
+      {
+        path: 'reports',
+        loadComponent: () =>
+          import('./features/reports/pages/reports/reports').then(
+            (m) => m.ReportsPage
+          ),
+      },
     ],
   },
 ];

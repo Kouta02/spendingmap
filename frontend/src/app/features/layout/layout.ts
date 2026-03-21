@@ -57,6 +57,16 @@ import { MatButtonModule } from '@angular/material/button';
             <mat-icon matListItemIcon>trending_up</mat-icon>
             <span matListItemTitle>Projeção</span>
           </a>
+
+          <div class="nav-section">Planejamento</div>
+          <a mat-list-item routerLink="/goals" routerLinkActive="active">
+            <mat-icon matListItemIcon>flag</mat-icon>
+            <span matListItemTitle>Metas</span>
+          </a>
+          <a mat-list-item routerLink="/reports" routerLinkActive="active">
+            <mat-icon matListItemIcon>assessment</mat-icon>
+            <span matListItemTitle>Relatórios</span>
+          </a>
         </mat-nav-list>
       </mat-sidenav>
 
