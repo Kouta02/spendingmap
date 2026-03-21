@@ -19,7 +19,7 @@ export interface Expense {
   updated_at: string;
 }
 
-export type PaymentType = 'CREDIT' | 'DEBIT' | 'BOLETO' | 'PIX';
+export type PaymentType = 'CREDIT' | 'DEBIT' | 'BOLETO' | 'PIX' | 'CASH';
 
 export interface ExpenseCreate {
   description: string;

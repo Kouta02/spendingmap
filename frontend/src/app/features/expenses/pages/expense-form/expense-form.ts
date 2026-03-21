@@ -23,7 +23,7 @@ import { format } from 'date-fns';
 import { ExpenseService } from '../../../../core/services/expense.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { BankService } from '../../../../core/services/bank.service';
-import { Category, Bank, ExpenseCreate } from '../../../../core/models';
+import { CategoryFlat, Bank, ExpenseCreate } from '../../../../core/models';
 
 @Component({
   selector: 'app-expense-form',
@@ -96,7 +96,7 @@ import { Category, Bank, ExpenseCreate } from '../../../../core/models';
             <mat-select formControlName="category">
               <mat-option [value]="null">Nenhuma</mat-option>
               @for (cat of categories(); track cat.id) {
-                <mat-option [value]="cat.id">{{ cat.name }}</mat-option>
+                <mat-option [value]="cat.id">{{ cat.full_path }}</mat-option>
               }
             </mat-select>
           </mat-form-field>
@@ -119,6 +119,7 @@ import { Category, Bank, ExpenseCreate } from '../../../../core/models';
             <mat-option value="CREDIT">Crédito</mat-option>
             <mat-option value="DEBIT">Débito</mat-option>
             <mat-option value="BOLETO">Boleto</mat-option>
+            <mat-option value="CASH">Saque/Dinheiro</mat-option>
           </mat-select>
         </mat-form-field>
 
@@ -251,7 +252,7 @@ export class ExpenseForm implements OnInit {
   private readonly bankService = inject(BankService);
   private readonly snackBar = inject(MatSnackBar);
 
-  categories = signal<Category[]>([]);
+  categories = signal<CategoryFlat[]>([]);
   banks = signal<Bank[]>([]);
   isEditing = signal(false);
   loadingData = signal(true);
@@ -273,7 +274,7 @@ export class ExpenseForm implements OnInit {
   });
 
   ngOnInit(): void {
-    this.categoryService.list().subscribe((cats) => this.categories.set(cats));
+    this.categoryService.flat().subscribe((cats) => this.categories.set(cats));
     this.bankService.list().subscribe((banks) => this.banks.set(banks));
 
     const id = this.route.snapshot.paramMap.get('id');

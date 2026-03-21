@@ -9,6 +9,7 @@ class Expense(models.Model):
         DEBIT = 'DEBIT', 'Débito'
         BOLETO = 'BOLETO', 'Boleto'
         PIX = 'PIX', 'Pix'
+        CASH = 'CASH', 'Saque/Dinheiro'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     description = models.CharField('descrição', max_length=255)

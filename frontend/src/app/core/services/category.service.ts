@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Category, CategoryCreate } from '../models';
+import { Category, CategoryFlat, CategoryCreate } from '../models';
 import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -11,6 +11,14 @@ export class CategoryService {
 
   list(): Observable<Category[]> {
     return this.http.get<Category[]>(this.baseUrl);
+  }
+
+  tree(): Observable<Category[]> {
+    return this.http.get<Category[]>(`${this.baseUrl}tree/`);
+  }
+
+  flat(): Observable<CategoryFlat[]> {
+    return this.http.get<CategoryFlat[]>(`${this.baseUrl}flat/`);
   }
 
   get(id: string): Observable<Category> {

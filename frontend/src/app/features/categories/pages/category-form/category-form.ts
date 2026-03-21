@@ -8,12 +8,14 @@ import {
 } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { CategoryService } from '../../../../core/services/category.service';
+import { CategoryFlat } from '../../../../core/models';
 
 @Component({
   selector: 'app-category-form',
@@ -23,6 +25,7 @@ import { CategoryService } from '../../../../core/services/category.service';
     ReactiveFormsModule,
     MatFormFieldModule,
     MatInputModule,
+    MatSelectModule,
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
@@ -40,6 +43,16 @@ import { CategoryService } from '../../../../core/services/category.service';
         @if (form.get('name')?.hasError('required')) {
           <mat-error>Nome é obrigatório</mat-error>
         }
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Categoria pai (opcional)</mat-label>
+        <mat-select formControlName="parent">
+          <mat-option [value]="null">Nenhuma (raiz)</mat-option>
+          @for (cat of parentOptions(); track cat.id) {
+            <mat-option [value]="cat.id">{{ cat.full_path }}</mat-option>
+          }
+        </mat-select>
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="full-width">
@@ -87,9 +100,7 @@ import { CategoryService } from '../../../../core/services/category.service';
   styles: `
     .entity-form { max-width: 500px; }
     .full-width { width: 100%; }
-    .color-field {
-      margin-bottom: 16px;
-    }
+    .color-field { margin-bottom: 16px; }
     .color-field label {
       font-size: 0.875rem;
       color: var(--mat-sys-on-surface-variant);
@@ -131,15 +142,27 @@ export class CategoryForm implements OnInit {
 
   isEditing = signal(false);
   saving = signal(false);
+  parentOptions = signal<CategoryFlat[]>([]);
   private categoryId = '';
 
   form: FormGroup = this.fb.group({
     name: ['', Validators.required],
+    parent: [null],
     icon: [''],
     color: ['#2196f3'],
   });
 
   ngOnInit(): void {
+    // Load flat list for parent selector
+    this.categoryService.flat().subscribe((cats) => {
+      // When editing, exclude self and own children from parent options
+      if (this.categoryId) {
+        this.parentOptions.set(cats.filter((c) => c.id !== this.categoryId));
+      } else {
+        this.parentOptions.set(cats);
+      }
+    });
+
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       this.isEditing.set(true);
@@ -148,6 +171,7 @@ export class CategoryForm implements OnInit {
         next: (cat) => {
           this.form.patchValue({
             name: cat.name,
+            parent: cat.parent,
             icon: cat.icon,
             color: cat.color || '#2196f3',
           });
@@ -159,6 +183,12 @@ export class CategoryForm implements OnInit {
           this.router.navigate(['/categories']);
         },
       });
+    } else {
+      // Check for parent query param (when adding subcategory)
+      const parentId = this.route.snapshot.queryParamMap.get('parent');
+      if (parentId) {
+        this.form.get('parent')?.setValue(parentId);
+      }
     }
   }
 

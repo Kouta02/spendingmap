@@ -17,7 +17,7 @@ import { format, subMonths, addMonths } from 'date-fns';
 import { ExpenseService } from '../../../../core/services/expense.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { BankService } from '../../../../core/services/bank.service';
-import { Expense, ExpenseFilters, PaymentType, Category, Bank } from '../../../../core/models';
+import { Expense, ExpenseFilters, PaymentType, CategoryFlat, Bank } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 import {
   ConfirmDialog,
@@ -67,7 +67,7 @@ import {
         <mat-select [(ngModel)]="filterCategory" (selectionChange)="loadExpenses()">
           <mat-option value="">Todas</mat-option>
           @for (cat of categories(); track cat.id) {
-            <mat-option [value]="cat.id">{{ cat.name }}</mat-option>
+            <mat-option [value]="cat.id">{{ cat.full_path }}</mat-option>
           }
         </mat-select>
       </mat-form-field>
@@ -90,6 +90,7 @@ import {
           <mat-option value="DEBIT">Débito</mat-option>
           <mat-option value="BOLETO">Boleto</mat-option>
           <mat-option value="PIX">PIX</mat-option>
+          <mat-option value="CASH">Saque/Dinheiro</mat-option>
         </mat-select>
       </mat-form-field>
     </div>
@@ -306,7 +307,7 @@ export class ExpenseList implements OnInit {
   private readonly dialog = inject(MatDialog);
 
   expenses = signal<Expense[]>([]);
-  categories = signal<Category[]>([]);
+  categories = signal<CategoryFlat[]>([]);
   banks = signal<Bank[]>([]);
   loading = signal(true);
   currentMonth = signal(format(new Date(), 'yyyy-MM'));
@@ -328,7 +329,7 @@ export class ExpenseList implements OnInit {
 
   ngOnInit(): void {
     this.updateMonthLabel();
-    this.categoryService.list().subscribe((cats) => this.categories.set(cats));
+    this.categoryService.flat().subscribe((cats) => this.categories.set(cats));
     this.bankService.list().subscribe((banks) => this.banks.set(banks));
     this.loadExpenses();
   }
@@ -387,6 +388,7 @@ export class ExpenseList implements OnInit {
       DEBIT: 'Débito',
       BOLETO: 'Boleto',
       PIX: 'PIX',
+      CASH: 'Saque/Dinheiro',
     };
     return labels[type] || type;
   }
