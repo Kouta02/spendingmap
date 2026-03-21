@@ -27,6 +27,10 @@ import { MatButtonModule } from '@angular/material/button';
           <span class="logo-text">SpendingMap</span>
         </div>
         <mat-nav-list>
+          <a mat-list-item routerLink="/dashboard" routerLinkActive="active">
+            <mat-icon matListItemIcon>dashboard</mat-icon>
+            <span matListItemTitle>Dashboard</span>
+          </a>
           <a mat-list-item routerLink="/expenses" routerLinkActive="active">
             <mat-icon matListItemIcon>receipt_long</mat-icon>
             <span matListItemTitle>Despesas</span>

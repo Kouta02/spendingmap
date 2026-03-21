@@ -6,7 +6,14 @@ export const routes: Routes = [
     path: '',
     component: Layout,
     children: [
-      { path: '', redirectTo: 'expenses', pathMatch: 'full' },
+      { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
+      {
+        path: 'dashboard',
+        loadComponent: () =>
+          import(
+            './features/dashboard/pages/dashboard/dashboard'
+          ).then((m) => m.DashboardPage),
+      },
       {
         path: 'expenses',
         loadComponent: () =>
