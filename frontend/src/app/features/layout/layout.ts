@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { Subscription } from 'rxjs';
+import { AuthService } from '../../core/services/auth.service';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
@@ -70,6 +71,13 @@ import { MatButtonModule } from '@angular/material/button';
             <span matListItemTitle>Relatórios</span>
           </a>
         </mat-nav-list>
+
+        <div class="sidenav-footer">
+          <button mat-button class="logout-btn" (click)="onLogout()">
+            <mat-icon>logout</mat-icon>
+            Sair
+          </button>
+        </div>
       </mat-sidenav>
 
       <mat-sidenav-content class="content">
@@ -124,6 +132,16 @@ import { MatButtonModule } from '@angular/material/button';
       letter-spacing: 0.5px;
       color: var(--mat-sys-on-surface-variant);
     }
+    .sidenav-footer {
+      margin-top: auto;
+      padding: 16px;
+      border-top: 1px solid var(--mat-sys-outline-variant);
+    }
+    .logout-btn {
+      width: 100%;
+      justify-content: flex-start;
+      color: var(--mat-sys-on-surface-variant);
+    }
     @media (max-width: 768px) {
       .page-content {
         padding: 16px;
@@ -132,6 +150,7 @@ import { MatButtonModule } from '@angular/material/button';
   `,
 })
 export class Layout implements OnInit, OnDestroy {
+  private readonly authService = inject(AuthService);
   private readonly breakpointObserver = inject(BreakpointObserver);
   private breakpointSub!: Subscription;
   isMobile = signal(false);
@@ -144,5 +163,9 @@ export class Layout implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.breakpointSub?.unsubscribe();
+  }
+
+  onLogout(): void {
+    this.authService.logout();
   }
 }
