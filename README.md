@@ -1,45 +1,74 @@
 # SpendingMap
 
-App pessoal de controle de despesas com **Django + Angular**.
+App pessoal de controle de despesas e receitas com módulo de remuneração do Senado Federal.
 
-Registra, visualiza e analisa despesas e receitas mensais, com um modulo de remuneracao que calcula automaticamente o contracheque (proventos, descontos, liquido) e exibe o saldo mensal real.
+**URL:** https://spendingmap.com.br
+
+## Funcionalidades
+
+- **Dashboard** — saldo mensal real (receita líquida − despesas), gráficos por categoria e banco, evolução mensal
+- **Despesas** — CRUD completo com suporte a parcelamento, recorrência, filtros por mês/categoria/banco/tipo
+- **Categorias** — hierárquicas com subcategorias (N níveis), ícones Material e cores
+- **Bancos** — cadastro com cores personalizadas
+- **Contracheque** — cálculo automático da remuneração (VB, GAL, GR, GDAE, AEQ, VPI, FC) e descontos (PSS, IRPF, Funpresp)
+- **Projeção salarial** — 2026–2029 com progressão automática (+1 padrão/ano)
+- **Metas de gasto** — limite por categoria/mês com barra de progresso e alertas (80%/100%)
+- **Relatórios** — comparativo mensal, despesas por categoria com filtro de período, parcelas futuras
+- **Autenticação** — login com token, rotas protegidas
 
 ## Stack
 
-- **Backend:** Django 6.0 + Django REST Framework 3.16 + PostgreSQL
-- **Frontend:** Angular + Angular Material
-- **Deploy:** Railway (backend) + Vercel (frontend)
+| Camada | Tecnologia |
+|---|---|
+| Backend | Django 6.0 + Django REST Framework 3.16 |
+| Banco de dados | PostgreSQL |
+| Frontend | Angular 21 + Angular Material + ngx-echarts |
+| Deploy | VPS Hostinger (nginx + gunicorn + systemd) |
+| SSL | Let's Encrypt |
 
-## Estrutura do Projeto
+## Estrutura
 
 ```
 spendingmap/
 ├── backend/
-│   ├── config/          # Settings (base/dev/prod), URLs, WSGI
+│   ├── config/               # Settings (base/dev/prod), URLs, WSGI
 │   ├── apps/
-│   │   ├── categories/  # CRUD de categorias
-│   │   ├── banks/       # CRUD de bancos
-│   │   └── expenses/    # CRUD de despesas + filtros + parcelas
+│   │   ├── categories/       # Categorias hierárquicas + importação xlsx
+│   │   ├── banks/            # Bancos
+│   │   ├── expenses/         # Despesas (parceladas, recorrentes, contracheque)
+│   │   ├── salary/           # SalaryEngine + Config + Snapshot
+│   │   ├── goals/            # Metas de gasto
+│   │   ├── dashboard/        # Agregações para o dashboard
+│   │   └── reports/          # Relatórios
+│   ├── Procfile
 │   ├── manage.py
 │   └── requirements.txt
-├── frontend/            # App Angular (em breve)
-├── docs/                # Documentacao e arquivos de referencia
-└── README.md
+├── frontend/
+│   ├── src/app/
+│   │   ├── core/             # Models, services, guards, interceptors
+│   │   ├── shared/           # Pipes, componentes reutilizáveis
+│   │   └── features/         # auth, dashboard, expenses, categories, banks,
+│   │                         # salary, goals, reports, layout
+│   ├── proxy.conf.json
+│   └── angular.json
+└── docs/                     # Documentação local
 ```
 
-## API Endpoints
+## API
 
-| Endpoint | Metodos | Descricao |
-|---|---|---|
-| `/api/auth/login/` | POST | Obter token de autenticacao |
-| `/api/categories/` | GET, POST | Listar / criar categorias |
-| `/api/categories/{id}/` | GET, PUT, PATCH, DELETE | Detalhe / editar / excluir |
-| `/api/banks/` | GET, POST | Listar / criar bancos |
-| `/api/banks/{id}/` | GET, PUT, PATCH, DELETE | Detalhe / editar / excluir |
-| `/api/expenses/` | GET, POST | Listar / criar despesas |
-| `/api/expenses/{id}/` | GET, PUT, PATCH, DELETE | Detalhe / editar / excluir |
-
-**Filtros de despesas:** `?month=YYYY-MM`, `?category=`, `?bank=`, `?payment_type=`, `?is_installment=`, `?from_paycheck=`
+| Endpoint | Descrição |
+|---|---|
+| `POST /api/auth/login/` | Autenticação → token |
+| `/api/categories/` | CRUD + `/tree/` + `/flat/` |
+| `/api/banks/` | CRUD |
+| `/api/expenses/` | CRUD + filtros (month, category, bank, payment_type) |
+| `/api/salary/config/` | Configuração salarial + `/current/` |
+| `/api/salary/calculate/` | Cálculo avulso do contracheque |
+| `/api/salary/generate_snapshot/` | Gerar e salvar snapshot mensal |
+| `/api/salary/projection/` | Projeção multi-ano |
+| `/api/goals/` | CRUD metas + `/alerts/` |
+| `/api/dashboard/*` | summary, by-category, by-bank, evolution |
+| `/api/reports/*` | summary, by-category, installments, comparison |
 
 ## Setup Local
 
@@ -49,13 +78,34 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # configurar credenciais
+cp .env.example .env  # configurar credenciais do banco
 python manage.py migrate
 python manage.py runserver 0.0.0.0:8002
+
+# Frontend
+cd frontend
+npm install
+npx ng serve --proxy-config proxy.conf.json --port 4200
+```
+
+## Deploy
+
+O app roda numa VPS Hostinger com nginx + gunicorn + systemd.
+
+Documentação completa do deploy em `docs/deploy-vps.md`.
+
+```bash
+# Atualizar frontend
+cd frontend && npx ng build --configuration=production
+
+# Atualizar backend
+cd backend && source .venv/bin/activate
+sudo systemctl restart spendingmap
 ```
 
 ## Branches
 
-- `main` — codigo estavel
-- `develop` — integracao continua
-- `feature/*` — funcionalidades em desenvolvimento
+- `main` — código estável em produção
+- `develop` — integração contínua
+- `feature/*` — novas funcionalidades
+- `fix/*` — correções de bugs
