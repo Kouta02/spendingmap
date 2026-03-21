@@ -73,6 +73,19 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
     } @else {
       <!-- Cards de resumo -->
       <div class="summary-cards">
+        <mat-card class="summary-card bruto">
+          <mat-card-content>
+            <div class="card-icon">
+              <mat-icon>paid</mat-icon>
+            </div>
+            <div class="card-info">
+              <span class="card-label">Remuneração Total</span>
+              <span class="card-value">{{ toNum(summary()?.receita_bruta) | currencyBrl }}</span>
+              <a routerLink="/salary" class="card-link">Ver detalhes</a>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
         <mat-card class="summary-card receita">
           <mat-card-content>
             <div class="card-icon">
@@ -81,6 +94,19 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
             <div class="card-info">
               <span class="card-label">Receita Líquida</span>
               <span class="card-value">{{ toNum(summary()?.receita_liquida) | currencyBrl }}</span>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="summary-card descontos">
+          <mat-card-content>
+            <div class="card-icon">
+              <mat-icon>receipt_long</mat-icon>
+            </div>
+            <div class="card-info">
+              <span class="card-label">Descontos Salário</span>
+              <span class="card-value">{{ toNum(summary()?.total_descontos_salario) | currencyBrl }}</span>
+              <a routerLink="/salary" class="card-link">Ver detalhes</a>
             </div>
           </mat-card-content>
         </mat-card>
@@ -106,18 +132,6 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
             <div class="card-info">
               <span class="card-label">Saldo Livre</span>
               <span class="card-value">{{ toNum(summary()?.saldo_livre) | currencyBrl }}</span>
-            </div>
-          </mat-card-content>
-        </mat-card>
-
-        <mat-card class="summary-card descontos">
-          <mat-card-content>
-            <div class="card-icon">
-              <mat-icon>receipt_long</mat-icon>
-            </div>
-            <div class="card-info">
-              <span class="card-label">Descontos Salário</span>
-              <span class="card-value">{{ toNum(summary()?.total_descontos_salario) | currencyBrl }}</span>
             </div>
           </mat-card-content>
         </mat-card>
@@ -274,6 +288,10 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
       background: #fce4ec;
       color: #c62828;
     }
+    .bruto .card-icon {
+      background: #e8eaf6;
+      color: #283593;
+    }
     .descontos .card-icon {
       background: #fff3e0;
       color: #e65100;
@@ -296,6 +314,16 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
     .card-sub {
       font-size: 0.75rem;
       color: var(--mat-sys-on-surface-variant);
+    }
+    .card-link {
+      font-size: 0.8rem;
+      color: var(--mat-sys-primary);
+      text-decoration: none;
+      font-weight: 500;
+      margin-top: 2px;
+    }
+    .card-link:hover {
+      text-decoration: underline;
     }
 
     .alert {
