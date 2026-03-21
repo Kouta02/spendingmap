@@ -1,5 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
@@ -21,7 +23,7 @@ import { MatButtonModule } from '@angular/material/button';
   ],
   template: `
     <mat-sidenav-container class="sidenav-container">
-      <mat-sidenav #sidenav mode="side" opened class="sidenav">
+      <mat-sidenav #sidenav [mode]="isMobile() ? 'over' : 'side'" [opened]="!isMobile()" class="sidenav">
         <div class="sidenav-header">
           <mat-icon class="logo-icon">account_balance_wallet</mat-icon>
           <span class="logo-text">SpendingMap</span>
@@ -122,6 +124,25 @@ import { MatButtonModule } from '@angular/material/button';
       letter-spacing: 0.5px;
       color: var(--mat-sys-on-surface-variant);
     }
+    @media (max-width: 768px) {
+      .page-content {
+        padding: 16px;
+      }
+    }
   `,
 })
-export class Layout {}
+export class Layout implements OnInit, OnDestroy {
+  private readonly breakpointObserver = inject(BreakpointObserver);
+  private breakpointSub!: Subscription;
+  isMobile = signal(false);
+
+  ngOnInit(): void {
+    this.breakpointSub = this.breakpointObserver
+      .observe([Breakpoints.Handset])
+      .subscribe((result) => this.isMobile.set(result.matches));
+  }
+
+  ngOnDestroy(): void {
+    this.breakpointSub?.unsubscribe();
+  }
+}

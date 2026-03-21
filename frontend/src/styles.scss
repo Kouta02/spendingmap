@@ -36,4 +36,27 @@ body {
   margin: 0;
   height: 100%;
 }
-/* You can add global styles to this file, and also import other style files */
+/* Estilos globais do SpendingMap */
+
+// Scrollbar customizada
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+// Tabelas
+.mat-mdc-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+// Snackbar
+.mat-mdc-snack-bar-container {
+  margin-bottom: 16px !important;
+}

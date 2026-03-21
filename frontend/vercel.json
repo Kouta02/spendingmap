@@ -1,0 +1,17 @@
+{
+  "buildCommand": "npx ng build --configuration=production",
+  "outputDirectory": "dist/frontend/browser",
+  "framework": null,
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "{{BACKEND_URL}}/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ]
+}
