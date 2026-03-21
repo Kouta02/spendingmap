@@ -70,6 +70,27 @@ export const routes: Routes = [
             (m) => m.BankForm
           ),
       },
+      {
+        path: 'salary',
+        loadComponent: () =>
+          import(
+            './features/salary/pages/salary-config/salary-config'
+          ).then((m) => m.SalaryConfigPage),
+      },
+      {
+        path: 'salary/history',
+        loadComponent: () =>
+          import(
+            './features/salary/pages/salary-snapshot/salary-snapshot'
+          ).then((m) => m.SalarySnapshotPage),
+      },
+      {
+        path: 'salary/projection',
+        loadComponent: () =>
+          import(
+            './features/salary/pages/salary-projection/salary-projection'
+          ).then((m) => m.SalaryProjectionPage),
+      },
     ],
   },
 ];

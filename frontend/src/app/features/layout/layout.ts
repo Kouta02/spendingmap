@@ -39,6 +39,20 @@ import { MatButtonModule } from '@angular/material/button';
             <mat-icon matListItemIcon>account_balance</mat-icon>
             <span matListItemTitle>Bancos</span>
           </a>
+
+          <div class="nav-section">Remuneração</div>
+          <a mat-list-item routerLink="/salary" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
+            <mat-icon matListItemIcon>payments</mat-icon>
+            <span matListItemTitle>Contracheque</span>
+          </a>
+          <a mat-list-item routerLink="/salary/history" routerLinkActive="active">
+            <mat-icon matListItemIcon>history</mat-icon>
+            <span matListItemTitle>Histórico</span>
+          </a>
+          <a mat-list-item routerLink="/salary/projection" routerLinkActive="active">
+            <mat-icon matListItemIcon>trending_up</mat-icon>
+            <span matListItemTitle>Projeção</span>
+          </a>
         </mat-nav-list>
       </mat-sidenav>
 
@@ -85,6 +99,14 @@ import { MatButtonModule } from '@angular/material/button';
     }
     .active {
       background-color: var(--mat-sys-secondary-container) !important;
+    }
+    .nav-section {
+      padding: 16px 16px 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--mat-sys-on-surface-variant);
     }
   `,
 })
