@@ -4,7 +4,7 @@ Endpoints de relatórios — agregações por período, categoria e parcelas fut
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Sum, Count, Q, F
+from django.db.models import Sum, Count, Q as models_Q, F
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -26,31 +26,35 @@ def summary_by_period(request):
         start = date(today.year, today.month, 1).isoformat()
         end = today.isoformat()
 
-    qs = Expense.objects.filter(date__gte=start, date__lte=end)
+    qs = Expense.objects.filter(date__gte=start, date__lte=end).select_related('payment_type')
 
     total = qs.aggregate(total=Sum('amount'))['total'] or Decimal('0')
     count = qs.count()
 
-    # Separar despesas do contracheque
-    from_paycheck = qs.filter(from_paycheck=True).aggregate(
-        total=Sum('amount')
-    )['total'] or Decimal('0')
-    external = total - from_paycheck
+    # Separar despesas do contracheque (from_paycheck ou tipo "Descontado do Contracheque")
+    from_paycheck_total = Decimal('0')
+    for exp in qs.filter(
+        models_Q(from_paycheck=True) | models_Q(payment_type__name='Descontado do Contracheque')
+    ):
+        from_paycheck_total += exp.amount
+    external = total - from_paycheck_total
 
     # Por tipo de pagamento
     by_payment = list(
-        qs.values('payment_type')
+        qs.values('payment_type', 'payment_type__name')
         .annotate(total=Sum('amount'), count=Count('id'))
         .order_by('-total')
     )
     for item in by_payment:
         item['total'] = str(item['total'])
+        item['payment_type_name'] = item.pop('payment_type__name', None) or 'Sem tipo'
+        item['payment_type'] = str(item['payment_type']) if item['payment_type'] else None
 
     return Response({
         'period': {'start': start, 'end': end},
         'total': str(total),
         'total_externo': str(external),
-        'total_contracheque': str(from_paycheck),
+        'total_contracheque': str(from_paycheck_total),
         'count': count,
         'by_payment_type': by_payment,
     })
@@ -174,20 +178,30 @@ def monthly_comparison(request):
             y -= 1
         ref = date(y, m, 1)
 
-        # Despesas do mês
-        qs = Expense.objects.filter(date__year=ref.year, date__month=ref.month)
-        total_despesas = qs.aggregate(total=Sum('amount'))['total'] or Decimal('0')
-        count = qs.count()
+        # Despesas do mês financeiro (excluir descontos do contracheque)
+        qs = Expense.objects.filter(
+            financial_month=ref,
+        ).select_related('payment_type')
+        descontos_cc = qs.filter(
+            models_Q(from_paycheck=True) | models_Q(payment_type__name='Descontado do Contracheque')
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+        total_despesas = qs.exclude(
+            models_Q(from_paycheck=True) | models_Q(payment_type__name='Descontado do Contracheque')
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+        count = qs.exclude(
+            models_Q(from_paycheck=True) | models_Q(payment_type__name='Descontado do Contracheque')
+        ).count()
 
         # Snapshot salarial
         snapshot = SalarySnapshot.objects.filter(month=ref).first()
-        liquido = Decimal(str(snapshot.liquido)) if snapshot else Decimal('0')
-        saldo = liquido - total_despesas
+        bruto = Decimal(str(snapshot.bruto_total)) if snapshot else Decimal('0')
+        remuneracao_liquida = bruto - descontos_cc
+        saldo = remuneracao_liquida - total_despesas
 
         result.append({
             'month': ref.isoformat(),
             'month_label': ref.strftime('%m/%Y'),
-            'receita_liquida': str(liquido),
+            'receita_liquida': str(remuneracao_liquida),
             'total_despesas': str(total_despesas),
             'quantidade_despesas': count,
             'saldo': str(saldo),

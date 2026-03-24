@@ -23,9 +23,9 @@ class GoalSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def _get_spending(self, obj: Goal) -> Decimal:
+        from datetime import date as date_cls
         filters = {
-            'date__year': obj.month.year,
-            'date__month': obj.month.month,
+            'financial_month': date_cls(obj.month.year, obj.month.month, 1),
         }
         if obj.category:
             filters['category'] = obj.category

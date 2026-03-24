@@ -21,13 +21,15 @@ echarts.use([
   TitleComponent, TooltipComponent, LegendComponent, GridComponent,
   CanvasRenderer, LabelLayout,
 ]);
-import { format, subMonths, addMonths } from 'date-fns';
+import { format, subMonths, addMonths, parse } from 'date-fns';
 import type { EChartsOption } from 'echarts';
 
 import { RouterLink } from '@angular/router';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { DashboardService } from '../../../../core/services/dashboard.service';
 import { GoalService } from '../../../../core/services/goal.service';
+import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
+import { ExpenseService, BoletoAlert } from '../../../../core/services/expense.service';
 import {
   MonthlySummary,
   CategoryBreakdown,
@@ -79,8 +81,8 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
               <mat-icon>paid</mat-icon>
             </div>
             <div class="card-info">
-              <span class="card-label">Remuneração Total</span>
-              <span class="card-value">{{ toNum(summary()?.receita_bruta) | currencyBrl }}</span>
+              <span class="card-label">Remuneração Bruta</span>
+              <span class="card-value">{{ toNum(summary()?.remuneracao_bruta) | currencyBrl }}</span>
               <a routerLink="/salary" class="card-link">Ver detalhes</a>
             </div>
           </mat-card-content>
@@ -92,8 +94,8 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
               <mat-icon>trending_up</mat-icon>
             </div>
             <div class="card-info">
-              <span class="card-label">Receita Líquida</span>
-              <span class="card-value">{{ toNum(summary()?.receita_liquida) | currencyBrl }}</span>
+              <span class="card-label">Remuneração Líquida</span>
+              <span class="card-value">{{ toNum(summary()?.remuneracao_liquida) | currencyBrl }}</span>
             </div>
           </mat-card-content>
         </mat-card>
@@ -104,7 +106,7 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
               <mat-icon>receipt_long</mat-icon>
             </div>
             <div class="card-info">
-              <span class="card-label">Descontos Salário</span>
+              <span class="card-label">Descontos no Contracheque</span>
               <span class="card-value">{{ toNum(summary()?.total_descontos_salario) | currencyBrl }}</span>
               <a routerLink="/salary" class="card-link">Ver detalhes</a>
             </div>
@@ -136,6 +138,42 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
           </mat-card-content>
         </mat-card>
       </div>
+
+      <!-- Alertas de Boletos -->
+      @if (boletoAlerts().length > 0) {
+        <mat-card class="boleto-alerts-card">
+          <mat-card-header>
+            <mat-card-title>
+              <mat-icon>warning</mat-icon>
+              Boletos Pendentes
+            </mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            @for (alert of boletoAlerts(); track alert.id) {
+              <div class="boleto-alert-item" [class]="'boleto-' + alert.alert_level">
+                <div class="boleto-alert-info">
+                  @if (alert.alert_level === 'overdue') {
+                    <mat-icon class="boleto-alert-icon overdue">error</mat-icon>
+                  } @else if (alert.alert_level === 'due_today') {
+                    <mat-icon class="boleto-alert-icon today">warning</mat-icon>
+                  }
+                  <div>
+                    <strong>{{ alert.description }}</strong>
+                    <span class="boleto-alert-amount">{{ toNum(alert.amount) | currencyBrl }}</span>
+                  </div>
+                </div>
+                <div class="boleto-alert-status">
+                  @if (alert.alert_level === 'overdue') {
+                    <span class="boleto-tag overdue">VENCIDO há {{ Math.abs(alert.days_until) }} dia{{ Math.abs(alert.days_until) > 1 ? 's' : '' }}</span>
+                  } @else if (alert.alert_level === 'due_today') {
+                    <span class="boleto-tag today">VENCE HOJE</span>
+                  }
+                </div>
+              </div>
+            }
+          </mat-card-content>
+        </mat-card>
+      }
 
       @if (!summary()?.has_snapshot) {
         <div class="alert">
@@ -385,6 +423,57 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
     .alert-pct.alerta { color: #ff9800; }
     .alert-pct.excedido { color: #f44336; }
     .ver-todas { margin-top: 8px; }
+    .boleto-alerts-card {
+      margin-bottom: 24px;
+      border-left: 4px solid #f44336;
+    }
+    .boleto-alerts-card mat-card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1rem;
+      color: #c62828;
+    }
+    .boleto-alert-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--mat-sys-outline-variant);
+    }
+    .boleto-alert-item:last-of-type { border-bottom: none; }
+    .boleto-alert-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .boleto-alert-icon.overdue { color: #c62828; }
+    .boleto-alert-icon.today { color: #e65100; }
+    .boleto-alert-amount {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--mat-sys-on-surface-variant);
+      font-family: 'Roboto Mono', monospace;
+    }
+    .boleto-tag {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+    .boleto-tag.overdue {
+      background: #ffebee;
+      color: #c62828;
+      animation: pulse 1.5s infinite;
+    }
+    .boleto-tag.today {
+      background: #fff3e0;
+      color: #e65100;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
     .loading {
       display: flex;
       justify-content: center;
@@ -395,6 +484,8 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 export class DashboardPage implements OnInit {
   private readonly dashboardService = inject(DashboardService);
   private readonly goalService = inject(GoalService);
+  private readonly financialCalendarService = inject(FinancialCalendarService);
+  private readonly expenseService = inject(ExpenseService);
   private readonly currencyPipe = new CurrencyBrlPipe();
 
   Math = Math;
@@ -412,10 +503,22 @@ export class DashboardPage implements OnInit {
   bankChartOptions = signal<EChartsOption>({});
   evolutionChartOptions = signal<EChartsOption>({});
   goalAlerts = signal<Goal[]>([]);
+  boletoAlerts = signal<BoletoAlert[]>([]);
 
   ngOnInit(): void {
-    this.updateMonthLabel();
-    this.loadAll();
+    // Buscar mês financeiro corrente antes de carregar dados
+    this.financialCalendarService.getCurrentFinancialMonth().subscribe({
+      next: (fm) => {
+        this.currentMonth.set(format(new Date(fm.year, fm.month - 1, 1), 'yyyy-MM'));
+        this.updateMonthLabel();
+        this.loadAll();
+      },
+      error: () => {
+        // Fallback: mês calendário
+        this.updateMonthLabel();
+        this.loadAll();
+      },
+    });
   }
 
   loadAll(): void {
@@ -426,8 +529,20 @@ export class DashboardPage implements OnInit {
     let loaded = 0;
     const checkDone = () => {
       loaded++;
-      if (loaded >= 5) this.loading.set(false);
+      if (loaded >= 6) this.loading.set(false);
     };
+
+    // Alertas de boletos (vencendo hoje e vencidos)
+    this.expenseService.getBoletoAlerts().subscribe({
+      next: (alerts) => {
+        // No dashboard só mostra vencendo hoje e vencidos
+        this.boletoAlerts.set(alerts.filter(a =>
+          a.alert_level === 'overdue' || a.alert_level === 'due_today'
+        ));
+        checkDone();
+      },
+      error: () => checkDone(),
+    });
 
     this.goalService.alerts(month).subscribe({
       next: (data) => { this.goalAlerts.set(data); checkDone(); },
@@ -468,21 +583,21 @@ export class DashboardPage implements OnInit {
   }
 
   prevMonth(): void {
-    const d = new Date(this.currentMonth() + '-01');
+    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
     this.currentMonth.set(format(subMonths(d, 1), 'yyyy-MM'));
     this.updateMonthLabel();
     this.loadAll();
   }
 
   nextMonth(): void {
-    const d = new Date(this.currentMonth() + '-01');
+    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
     this.currentMonth.set(format(addMonths(d, 1), 'yyyy-MM'));
     this.updateMonthLabel();
     this.loadAll();
   }
 
   private updateMonthLabel(): void {
-    const d = new Date(this.currentMonth() + '-01');
+    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
     this.monthLabel.set(
       d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
     );
