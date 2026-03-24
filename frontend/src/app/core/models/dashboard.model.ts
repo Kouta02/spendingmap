@@ -1,8 +1,9 @@
 export interface MonthlySummary {
   month: string;
-  receita_liquida: string;
-  receita_bruta: string;
+  remuneracao_bruta: string;
+  remuneracao_liquida: string;
   total_descontos_salario: string;
+  quantidade_descontos: number;
   total_despesas: string;
   quantidade_despesas: number;
   saldo_livre: string;
