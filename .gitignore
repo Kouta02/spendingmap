@@ -50,3 +50,5 @@ coverage/
 # === Others ===
 CLAUDE.md
 docs/*.md
+setup-desenvolvimento-arch.md
+backend/scripts/cron_dev.sh
