@@ -59,7 +59,7 @@ import { BankService } from '../../../../core/services/bank.service';
       </div>
 
       <div class="form-actions">
-        <a mat-button routerLink="/banks">Cancelar</a>
+        <a mat-button routerLink="/settings/banks">Cancelar</a>
         <button
           mat-flat-button
           type="submit"
@@ -142,7 +142,7 @@ export class BankForm implements OnInit {
         },
         error: () => {
           this.snackBar.open('Banco não encontrado', 'OK', { duration: 3000 });
-          this.router.navigate(['/banks']);
+          this.router.navigate(['/settings/banks']);
         },
       });
     }
@@ -170,7 +170,7 @@ export class BankForm implements OnInit {
           'OK',
           { duration: 3000 }
         );
-        this.router.navigate(['/banks']);
+        this.router.navigate(['/settings/banks']);
       },
       error: () => {
         this.saving.set(false);

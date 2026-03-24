@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
@@ -12,17 +12,24 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialog } from '@angular/material/dialog';
 import { DatePipe } from '@angular/common';
-import { format, subMonths, addMonths } from 'date-fns';
+import { format, subMonths, addMonths, parse } from 'date-fns';
 
 import { ExpenseService } from '../../../../core/services/expense.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { BankService } from '../../../../core/services/bank.service';
-import { Expense, ExpenseFilters, PaymentType, CategoryFlat, Bank } from '../../../../core/models';
+import { PaymentTypeService } from '../../../../core/services/payment-type.service';
+import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
+import { Expense, ExpenseFilters, CategoryFlat, Bank, PaymentType } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 import {
   ConfirmDialog,
   ConfirmDialogData,
 } from '../../../../shared/components/confirm-dialog/confirm-dialog';
+import {
+  MarkPaidDialog,
+  MarkPaidDialogData,
+  MarkPaidDialogResult,
+} from '../../../../shared/components/mark-paid-dialog/mark-paid-dialog';
 
 @Component({
   selector: 'app-expense-list',
@@ -66,8 +73,17 @@ import {
         <mat-label>Categoria</mat-label>
         <mat-select [(ngModel)]="filterCategory" (selectionChange)="loadExpenses()">
           <mat-option value="">Todas</mat-option>
-          @for (cat of categories(); track cat.id) {
-            <mat-option [value]="cat.id">{{ cat.full_path }}</mat-option>
+          @for (group of categoryGroups(); track group.root.id) {
+            @if (group.children.length > 0) {
+              <mat-optgroup [label]="group.root.name">
+                <mat-option [value]="group.root.id">{{ group.root.name }} (geral)</mat-option>
+                @for (child of group.children; track child.id) {
+                  <mat-option [value]="child.id">{{ child.name }}</mat-option>
+                }
+              </mat-optgroup>
+            } @else {
+              <mat-option [value]="group.root.id">{{ group.root.name }}</mat-option>
+            }
           }
         </mat-select>
       </mat-form-field>
@@ -86,11 +102,9 @@ import {
         <mat-label>Tipo Pagamento</mat-label>
         <mat-select [(ngModel)]="filterPaymentType" (selectionChange)="loadExpenses()">
           <mat-option value="">Todos</mat-option>
-          <mat-option value="CREDIT">Crédito</mat-option>
-          <mat-option value="DEBIT">Débito</mat-option>
-          <mat-option value="BOLETO">Boleto</mat-option>
-          <mat-option value="PIX">PIX</mat-option>
-          <mat-option value="CASH">Saque/Dinheiro</mat-option>
+          @for (pt of paymentTypes(); track pt.id) {
+            <mat-option [value]="pt.id">{{ pt.name }}</mat-option>
+          }
         </mat-select>
       </mat-form-field>
     </div>
@@ -137,6 +151,40 @@ import {
                   <mat-icon inline>payments</mat-icon>
                 </span>
               }
+              @if (e.is_predicted) {
+                <span class="badge predicted" matTooltip="Prevista — será confirmada automaticamente na data">
+                  <mat-icon inline>schedule</mat-icon> Prevista
+                </span>
+              }
+              @if (e.boleto_status === 'pending') {
+                @let alert = getBoletoAlert(e);
+                @if (alert === 'overdue') {
+                  <span class="badge boleto-overdue" matTooltip="Boleto vencido!">
+                    <mat-icon inline>error</mat-icon> VENCIDO
+                  </span>
+                } @else if (alert === 'due_today') {
+                  <span class="badge boleto-today" matTooltip="Vence hoje!">
+                    <mat-icon inline>warning</mat-icon> VENCE HOJE
+                  </span>
+                } @else if (alert === 'due_3_days') {
+                  <span class="badge boleto-soon" matTooltip="Vence em até 3 dias">
+                    <mat-icon inline>schedule</mat-icon> Vence em breve
+                  </span>
+                } @else if (alert === 'due_5_days') {
+                  <span class="badge boleto-5days" matTooltip="Vence em até 5 dias">
+                    <mat-icon inline>schedule</mat-icon> Vence em breve
+                  </span>
+                } @else {
+                  <span class="badge boleto-pending" matTooltip="Boleto pendente — dia {{ e.due_day }}">
+                    <mat-icon inline>receipt</mat-icon> Pendente
+                  </span>
+                }
+              }
+              @if (e.boleto_status === 'paid') {
+                <span class="badge boleto-paid" matTooltip="Boleto pago">
+                  <mat-icon inline>check_circle</mat-icon> Pago
+                </span>
+              }
             </td>
           </ng-container>
 
@@ -168,7 +216,7 @@ import {
 
           <ng-container matColumnDef="payment_type">
             <th mat-header-cell *matHeaderCellDef>Pagamento</th>
-            <td mat-cell *matCellDef="let e">{{ paymentTypeLabel(e.payment_type) }}</td>
+            <td mat-cell *matCellDef="let e">{{ e.payment_type_name || '—' }}</td>
           </ng-container>
 
           <ng-container matColumnDef="amount">
@@ -181,17 +229,24 @@ import {
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef></th>
             <td mat-cell *matCellDef="let e">
-              <a mat-icon-button [routerLink]="['/expenses', e.id, 'edit']" matTooltip="Editar">
-                <mat-icon>edit</mat-icon>
-              </a>
-              <button mat-icon-button (click)="confirmDelete(e)" matTooltip="Excluir" color="warn">
-                <mat-icon>delete</mat-icon>
-              </button>
+              @if (!e.is_predicted) {
+                @if (e.boleto_status === 'pending') {
+                  <button mat-icon-button (click)="openMarkPaid(e)" matTooltip="Marcar como pago" color="primary">
+                    <mat-icon>paid</mat-icon>
+                  </button>
+                }
+                <a mat-icon-button [routerLink]="['/expenses', e.id, 'edit']" matTooltip="Editar">
+                  <mat-icon>edit</mat-icon>
+                </a>
+                <button mat-icon-button (click)="confirmDelete(e)" matTooltip="Excluir" color="warn">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              }
             </td>
           </ng-container>
 
           <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-          <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns" [class.predicted-row]="row.is_predicted"></tr>
         </table>
       }
     }
@@ -272,6 +327,44 @@ import {
       background: #e8f5e9;
       color: #2e7d32;
     }
+    .predicted {
+      background: #fff3e0;
+      color: #e65100;
+    }
+    .predicted-row {
+      opacity: 0.6;
+    }
+    .boleto-overdue {
+      background: #ffebee;
+      color: #c62828;
+      font-weight: 600;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    .boleto-today {
+      background: #fff3e0;
+      color: #e65100;
+      font-weight: 600;
+    }
+    .boleto-soon {
+      background: #fffde7;
+      color: #f57f17;
+    }
+    .boleto-5days {
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+    .boleto-pending {
+      background: #f5f5f5;
+      color: #616161;
+    }
+    .boleto-paid {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
     .category-chip,
     .bank-chip {
       border-left: 3px solid #ccc;
@@ -304,11 +397,23 @@ export class ExpenseList implements OnInit {
   private readonly expenseService = inject(ExpenseService);
   private readonly categoryService = inject(CategoryService);
   private readonly bankService = inject(BankService);
+  private readonly paymentTypeService = inject(PaymentTypeService);
+  private readonly financialCalendarService = inject(FinancialCalendarService);
   private readonly dialog = inject(MatDialog);
 
   expenses = signal<Expense[]>([]);
   categories = signal<CategoryFlat[]>([]);
   banks = signal<Bank[]>([]);
+  paymentTypes = signal<PaymentType[]>([]);
+
+  categoryGroups = computed(() => {
+    const cats = this.categories();
+    const roots = cats.filter((c) => !c.parent);
+    return roots.map((root) => {
+      const children = cats.filter((c) => c.parent === root.id);
+      return { root, children };
+    });
+  });
   loading = signal(true);
   currentMonth = signal(format(new Date(), 'yyyy-MM'));
   monthLabel = signal('');
@@ -328,10 +433,23 @@ export class ExpenseList implements OnInit {
   ];
 
   ngOnInit(): void {
-    this.updateMonthLabel();
     this.categoryService.flat().subscribe((cats) => this.categories.set(cats));
     this.bankService.list().subscribe((banks) => this.banks.set(banks));
-    this.loadExpenses();
+    this.paymentTypeService.list().subscribe((pts) => this.paymentTypes.set(pts));
+
+    // Buscar o mês financeiro corrente antes de carregar despesas
+    this.financialCalendarService.getCurrentFinancialMonth().subscribe({
+      next: (fm) => {
+        this.currentMonth.set(format(new Date(fm.year, fm.month - 1, 1), 'yyyy-MM'));
+        this.updateMonthLabel();
+        this.loadExpenses();
+      },
+      error: () => {
+        // Fallback: mês calendário
+        this.updateMonthLabel();
+        this.loadExpenses();
+      },
+    });
   }
 
   loadExpenses(): void {
@@ -343,7 +461,7 @@ export class ExpenseList implements OnInit {
     if (this.filterCategory) filters.category = this.filterCategory;
     if (this.filterBank) filters.bank = this.filterBank;
     if (this.filterPaymentType)
-      filters.payment_type = this.filterPaymentType as PaymentType;
+      filters.payment_type = this.filterPaymentType;
 
     this.expenseService.list(filters).subscribe({
       next: (expenses) => {
@@ -362,35 +480,24 @@ export class ExpenseList implements OnInit {
   }
 
   prevMonth(): void {
-    const d = new Date(this.currentMonth() + '-01');
+    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
     this.currentMonth.set(format(subMonths(d, 1), 'yyyy-MM'));
     this.updateMonthLabel();
     this.loadExpenses();
   }
 
   nextMonth(): void {
-    const d = new Date(this.currentMonth() + '-01');
+    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
     this.currentMonth.set(format(addMonths(d, 1), 'yyyy-MM'));
     this.updateMonthLabel();
     this.loadExpenses();
   }
 
   private updateMonthLabel(): void {
-    const d = new Date(this.currentMonth() + '-01');
+    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
     this.monthLabel.set(
       d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
     );
-  }
-
-  paymentTypeLabel(type: PaymentType): string {
-    const labels: Record<PaymentType, string> = {
-      CREDIT: 'Crédito',
-      DEBIT: 'Débito',
-      BOLETO: 'Boleto',
-      PIX: 'PIX',
-      CASH: 'Saque/Dinheiro',
-    };
-    return labels[type] || type;
   }
 
   getCategoryColor(categoryId: string | null): string {
@@ -403,6 +510,47 @@ export class ExpenseList implements OnInit {
   getBankColor(bankId: string | null): string {
     if (!bankId) return '#ccc';
     return this.banks().find((b) => b.id === bankId)?.color || '#ccc';
+  }
+
+  getBoletoAlert(expense: Expense): string | null {
+    if (!expense.due_day || expense.boleto_status !== 'pending') return null;
+    const today = new Date();
+    const [year, month] = expense.date.split('-').map(Number);
+    const maxDay = new Date(year, month, 0).getDate();
+    const dueDay = Math.min(expense.due_day, maxDay);
+    const dueDate = new Date(year, month - 1, dueDay);
+    const diffTime = dueDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return 'overdue';
+    if (diffDays === 0) return 'due_today';
+    if (diffDays <= 3) return 'due_3_days';
+    if (diffDays <= 5) return 'due_5_days';
+    return null;
+  }
+
+  openMarkPaid(expense: Expense): void {
+    const [year, month] = expense.date.split('-').map(Number);
+    const maxDay = new Date(year, month, 0).getDate();
+    const dueDay = Math.min(expense.due_day || 1, maxDay);
+    const dueDate = new Date(year, month - 1, dueDay);
+
+    const ref = this.dialog.open(MarkPaidDialog, {
+      width: '400px',
+      data: {
+        description: expense.description,
+        amount: parseFloat(String(expense.amount)),
+        dueDate: dueDate.toLocaleDateString('pt-BR'),
+      } as MarkPaidDialogData,
+    });
+
+    ref.afterClosed().subscribe((result: MarkPaidDialogResult | null) => {
+      if (result?.confirmed) {
+        this.expenseService.markPaid(expense.id, result.amount).subscribe(() => {
+          this.loadExpenses();
+        });
+      }
+    });
   }
 
   confirmDelete(expense: Expense): void {

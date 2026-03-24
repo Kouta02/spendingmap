@@ -7,15 +7,15 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialog } from '@angular/material/dialog';
 
-import { BankService } from '../../../../core/services/bank.service';
-import { Bank } from '../../../../core/models';
+import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
+import { CreditCard } from '../../../../core/models';
 import {
   ConfirmDialog,
   ConfirmDialogData,
 } from '../../../../shared/components/confirm-dialog/confirm-dialog';
 
 @Component({
-  selector: 'app-bank-list',
+  selector: 'app-credit-card-list',
   standalone: true,
   imports: [
     RouterLink,
@@ -27,10 +27,10 @@ import {
   ],
   template: `
     <div class="page-header">
-      <h1>Bancos</h1>
-      <a mat-fab extended routerLink="/settings/banks/new">
+      <h2>Cartoes de Credito</h2>
+      <a mat-fab extended routerLink="/settings/credit-cards/new">
         <mat-icon>add</mat-icon>
-        Novo Banco
+        Novo Cartao
       </a>
     </div>
 
@@ -38,42 +38,42 @@ import {
       <div class="loading">
         <mat-spinner diameter="40" />
       </div>
-    } @else if (banks().length === 0) {
+    } @else if (cards().length === 0) {
       <div class="empty-state">
-        <mat-icon>account_balance</mat-icon>
-        <p>Nenhum banco cadastrado.</p>
-        <a mat-flat-button routerLink="/settings/banks/new">Criar banco</a>
+        <mat-icon>credit_card</mat-icon>
+        <p>Nenhum cartao cadastrado.</p>
+        <a mat-flat-button routerLink="/settings/credit-cards/new">Cadastrar cartao</a>
       </div>
     } @else {
-      <table mat-table [dataSource]="banks()" class="data-table">
-        <ng-container matColumnDef="color">
-          <th mat-header-cell *matHeaderCellDef>Cor</th>
-          <td mat-cell *matCellDef="let b">
-            <span
-              class="color-dot"
-              [style.background-color]="b.color || '#ccc'"
-            ></span>
-          </td>
-        </ng-container>
-
+      <table mat-table [dataSource]="cards()" class="data-table">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Nome</th>
-          <td mat-cell *matCellDef="let b">{{ b.name }}</td>
+          <td mat-cell *matCellDef="let c">{{ c.name }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="closing_day">
+          <th mat-header-cell *matHeaderCellDef>Fechamento</th>
+          <td mat-cell *matCellDef="let c">Dia {{ c.closing_day }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="due_day">
+          <th mat-header-cell *matHeaderCellDef>Vencimento</th>
+          <td mat-cell *matCellDef="let c">Dia {{ c.due_day }}</td>
         </ng-container>
 
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
-          <td mat-cell *matCellDef="let b">
+          <td mat-cell *matCellDef="let c">
             <a
               mat-icon-button
-              [routerLink]="['/settings/banks', b.id, 'edit']"
+              [routerLink]="['/settings/credit-cards', c.id, 'edit']"
               matTooltip="Editar"
             >
               <mat-icon>edit</mat-icon>
             </a>
             <button
               mat-icon-button
-              (click)="confirmDelete(b)"
+              (click)="confirmDelete(c)"
               matTooltip="Excluir"
               color="warn"
             >
@@ -94,15 +94,8 @@ import {
       align-items: center;
       margin-bottom: 24px;
     }
-    .page-header h1 { margin: 0; font-size: 1.5rem; }
+    .page-header h2 { margin: 0; font-size: 1.25rem; }
     .data-table { width: 100%; }
-    .color-dot {
-      display: inline-block;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      border: 1px solid rgba(0,0,0,0.12);
-    }
     .loading {
       display: flex;
       justify-content: center;
@@ -123,42 +116,42 @@ import {
     }
   `,
 })
-export class BankList implements OnInit {
-  private readonly bankService = inject(BankService);
+export class CreditCardList implements OnInit {
+  private readonly service = inject(FinancialCalendarService);
   private readonly dialog = inject(MatDialog);
 
-  banks = signal<Bank[]>([]);
+  cards = signal<CreditCard[]>([]);
   loading = signal(true);
-  displayedColumns = ['color', 'name', 'actions'];
+  displayedColumns = ['name', 'closing_day', 'due_day', 'actions'];
 
   ngOnInit(): void {
-    this.loadBanks();
+    this.loadCards();
   }
 
-  loadBanks(): void {
+  loadCards(): void {
     this.loading.set(true);
-    this.bankService.list().subscribe({
-      next: (banks) => {
-        this.banks.set(banks);
+    this.service.listCreditCards().subscribe({
+      next: (cards) => {
+        this.cards.set(cards);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
     });
   }
 
-  confirmDelete(bank: Bank): void {
+  confirmDelete(card: CreditCard): void {
     const ref = this.dialog.open(ConfirmDialog, {
       data: {
-        title: 'Excluir Banco',
-        message: `Deseja excluir "${bank.name}"?`,
+        title: 'Excluir Cartao',
+        message: `Deseja excluir "${card.name}"?`,
         confirmText: 'Excluir',
       } as ConfirmDialogData,
     });
 
     ref.afterClosed().subscribe((confirmed) => {
       if (confirmed) {
-        this.bankService.delete(bank.id).subscribe(() => {
-          this.loadBanks();
+        this.service.deleteCreditCard(card.id).subscribe(() => {
+          this.loadCards();
         });
       }
     });

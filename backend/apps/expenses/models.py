@@ -4,13 +4,6 @@ from django.db import models
 
 
 class Expense(models.Model):
-    class PaymentType(models.TextChoices):
-        CREDIT = 'CREDIT', 'Crédito'
-        DEBIT = 'DEBIT', 'Débito'
-        BOLETO = 'BOLETO', 'Boleto'
-        PIX = 'PIX', 'Pix'
-        CASH = 'CASH', 'Saque/Dinheiro'
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     description = models.CharField('descrição', max_length=255)
     amount = models.DecimalField('valor', max_digits=12, decimal_places=2)
@@ -23,11 +16,13 @@ class Expense(models.Model):
         related_name='expenses',
         verbose_name='categoria',
     )
-    payment_type = models.CharField(
-        'tipo de pagamento',
-        max_length=10,
-        choices=PaymentType.choices,
-        default=PaymentType.PIX,
+    payment_type = models.ForeignKey(
+        'payment_types.PaymentType',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='expenses',
+        verbose_name='tipo de pagamento',
     )
     bank = models.ForeignKey(
         'banks.Bank',
@@ -46,8 +41,40 @@ class Expense(models.Model):
         blank=True,
         db_index=True,
     )
+    credit_card = models.ForeignKey(
+        'financial_calendar.CreditCard',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='expenses',
+        verbose_name='cartão de crédito',
+    )
+    financial_month = models.DateField(
+        'mês financeiro',
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='Primeiro dia do mês financeiro (calculado automaticamente)',
+    )
     is_recurring = models.BooleanField('é recorrente', default=False)
     from_paycheck = models.BooleanField('do contracheque', default=False)
+    due_day = models.PositiveIntegerField(
+        'dia de vencimento',
+        null=True,
+        blank=True,
+        help_text='Dia do mês em que o boleto vence (1-31)',
+    )
+    boleto_status = models.CharField(
+        'status do boleto',
+        max_length=10,
+        choices=[
+            ('pending', 'Pendente'),
+            ('paid', 'Pago'),
+        ],
+        null=True,
+        blank=True,
+        help_text='Status do boleto (somente para despesas tipo boleto)',
+    )
     notes = models.TextField('observações', blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

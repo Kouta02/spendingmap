@@ -19,7 +19,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatCardModule } from '@angular/material/card';
 import { NgxMaskDirective } from 'ngx-mask';
-import { format, subMonths, addMonths } from 'date-fns';
+import { format, subMonths, addMonths, parse } from 'date-fns';
 
 import { GoalService } from '../../../../core/services/goal.service';
 import { CategoryService } from '../../../../core/services/category.service';
@@ -342,21 +342,21 @@ export class GoalList implements OnInit {
   }
 
   prevMonth(): void {
-    const d = new Date(this.currentMonth() + '-01');
+    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
     this.currentMonth.set(format(subMonths(d, 1), 'yyyy-MM'));
     this.updateMonthLabel();
     this.loadGoals();
   }
 
   nextMonth(): void {
-    const d = new Date(this.currentMonth() + '-01');
+    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
     this.currentMonth.set(format(addMonths(d, 1), 'yyyy-MM'));
     this.updateMonthLabel();
     this.loadGoals();
   }
 
   private updateMonthLabel(): void {
-    const d = new Date(this.currentMonth() + '-01');
+    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
     this.monthLabel.set(
       d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
     );

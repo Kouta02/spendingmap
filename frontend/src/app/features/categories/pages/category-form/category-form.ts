@@ -1,5 +1,6 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import {
   FormBuilder,
   FormGroup,
@@ -13,15 +14,68 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { CategoryService } from '../../../../core/services/category.service';
 import { CategoryFlat } from '../../../../core/models';
+
+const ICON_CATEGORIES: { label: string; icons: string[] }[] = [
+  {
+    label: 'Alimentacao',
+    icons: ['restaurant', 'fastfood', 'local_cafe', 'local_bar', 'lunch_dining', 'local_pizza', 'bakery_dining', 'liquor', 'local_grocery_store', 'kitchen', 'cake', 'icecream', 'ramen_dining', 'set_meal'],
+  },
+  {
+    label: 'Moradia',
+    icons: ['home', 'apartment', 'house', 'cottage', 'roofing', 'bed', 'chair', 'weekend', 'door_front', 'bathtub', 'microwave', 'iron', 'cleaning_services'],
+  },
+  {
+    label: 'Transporte',
+    icons: ['directions_car', 'local_gas_station', 'directions_bus', 'subway', 'two_wheeler', 'pedal_bike', 'flight', 'local_taxi', 'train', 'airport_shuttle', 'ev_station', 'garage'],
+  },
+  {
+    label: 'Saude',
+    icons: ['local_hospital', 'medical_services', 'healing', 'medication', 'vaccines', 'health_and_safety', 'monitor_heart', 'psychology', 'spa', 'fitness_center', 'self_improvement'],
+  },
+  {
+    label: 'Educacao',
+    icons: ['school', 'menu_book', 'auto_stories', 'library_books', 'science', 'calculate', 'translate', 'draw', 'architecture', 'biotech'],
+  },
+  {
+    label: 'Lazer',
+    icons: ['sports_esports', 'movie', 'music_note', 'headphones', 'theater_comedy', 'park', 'pool', 'beach_access', 'hiking', 'surfing', 'sports_soccer', 'sports_tennis', 'casino', 'celebration', 'nightlife'],
+  },
+  {
+    label: 'Compras',
+    icons: ['shopping_cart', 'shopping_bag', 'storefront', 'local_mall', 'checkroom', 'diamond', 'watch', 'redeem', 'sell', 'receipt_long'],
+  },
+  {
+    label: 'Financas',
+    icons: ['payments', 'account_balance', 'credit_card', 'savings', 'attach_money', 'trending_up', 'trending_down', 'currency_exchange', 'receipt', 'request_quote', 'account_balance_wallet', 'paid'],
+  },
+  {
+    label: 'Tecnologia',
+    icons: ['devices', 'smartphone', 'laptop', 'desktop_windows', 'tablet', 'tv', 'headset', 'mouse', 'keyboard', 'memory', 'wifi', 'router', 'cloud'],
+  },
+  {
+    label: 'Servicos',
+    icons: ['build', 'plumbing', 'electrical_services', 'handyman', 'construction', 'engineering', 'local_laundry_service', 'dry_cleaning', 'pest_control', 'water_drop', 'bolt', 'gas_meter'],
+  },
+  {
+    label: 'Pessoal',
+    icons: ['person', 'face', 'child_care', 'pets', 'favorite', 'star', 'emoji_events', 'card_giftcard', 'volunteer_activism', 'church', 'diversity_3', 'family_restroom'],
+  },
+  {
+    label: 'Outros',
+    icons: ['category', 'label', 'bookmark', 'flag', 'info', 'help', 'lightbulb', 'shield', 'lock', 'key', 'public', 'explore', 'map', 'photo_camera', 'brush'],
+  },
+];
 
 @Component({
   selector: 'app-category-form',
   standalone: true,
   imports: [
     RouterLink,
+    FormsModule,
     ReactiveFormsModule,
     MatFormFieldModule,
     MatInputModule,
@@ -30,6 +84,7 @@ import { CategoryFlat } from '../../../../core/models';
     MatIconModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    MatTooltipModule,
   ],
   template: `
     <div class="page-header">
@@ -55,15 +110,42 @@ import { CategoryFlat } from '../../../../core/models';
         </mat-select>
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="full-width">
-        <mat-label>Ícone (Material Icon)</mat-label>
-        <input matInput formControlName="icon" placeholder="ex: restaurant" />
-        <mat-hint>
+      <div class="icon-picker-section">
+        <label class="section-label">
+          Icone
           @if (form.get('icon')?.value) {
-            Preview: <mat-icon>{{ form.get('icon')?.value }}</mat-icon>
+            <span class="selected-icon-preview">
+              <mat-icon>{{ form.get('icon')?.value }}</mat-icon>
+              {{ form.get('icon')?.value }}
+              <button mat-icon-button type="button" (click)="selectIcon('')" matTooltip="Remover icone" class="remove-icon-btn">
+                <mat-icon>close</mat-icon>
+              </button>
+            </span>
           }
-        </mat-hint>
-      </mat-form-field>
+        </label>
+
+        <div class="icon-grid-container">
+          @for (group of allIconGroups; track group.label) {
+            <div class="icon-group">
+              <span class="icon-group-label">{{ group.label }}</span>
+              <div class="icon-grid">
+                @for (icon of group.icons; track icon) {
+                  <button
+                    type="button"
+                    mat-icon-button
+                    [matTooltip]="icon"
+                    [class.selected]="form.get('icon')?.value === icon"
+                    (click)="selectIcon(icon)"
+                    class="icon-btn"
+                  >
+                    <mat-icon>{{ icon }}</mat-icon>
+                  </button>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </div>
 
       <div class="color-field">
         <label>Cor</label>
@@ -82,7 +164,7 @@ import { CategoryFlat } from '../../../../core/models';
       </div>
 
       <div class="form-actions">
-        <a mat-button routerLink="/categories">Cancelar</a>
+        <a mat-button routerLink="/settings/categories">Cancelar</a>
         <button
           mat-flat-button
           type="submit"
@@ -98,8 +180,82 @@ import { CategoryFlat } from '../../../../core/models';
     </form>
   `,
   styles: `
-    .entity-form { max-width: 500px; }
+    .entity-form { max-width: 600px; }
     .full-width { width: 100%; }
+    .section-label {
+      font-size: 0.875rem;
+      color: var(--mat-sys-on-surface-variant);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .selected-icon-preview {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--mat-sys-primary-container);
+      color: var(--mat-sys-on-primary-container);
+      padding: 2px 4px 2px 8px;
+      border-radius: 16px;
+      font-size: 0.8rem;
+    }
+    .remove-icon-btn {
+      width: 24px !important;
+      height: 24px !important;
+      line-height: 24px !important;
+    }
+    .remove-icon-btn mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+    .icon-search-field {
+      margin-top: 8px;
+    }
+    .icon-picker-section {
+      margin-bottom: 16px;
+    }
+    .icon-grid-container {
+      max-height: 280px;
+      overflow-y: auto;
+      border: 1px solid var(--mat-sys-outline-variant);
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .icon-group {
+      margin-bottom: 8px;
+    }
+    .icon-group-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--mat-sys-on-surface-variant);
+      display: block;
+      padding: 4px 4px 2px;
+    }
+    .icon-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px;
+    }
+    .icon-btn {
+      border-radius: 8px !important;
+      transition: background-color 0.15s;
+    }
+    .icon-btn:hover {
+      background-color: var(--mat-sys-surface-container-highest);
+    }
+    .icon-btn.selected {
+      background-color: var(--mat-sys-primary-container);
+      color: var(--mat-sys-on-primary-container);
+    }
+    .no-results {
+      text-align: center;
+      color: var(--mat-sys-on-surface-variant);
+      padding: 16px;
+    }
     .color-field { margin-bottom: 16px; }
     .color-field label {
       font-size: 0.875rem;
@@ -145,6 +301,20 @@ export class CategoryForm implements OnInit {
   parentOptions = signal<CategoryFlat[]>([]);
   private categoryId = '';
 
+  iconSearch = '';
+  readonly allIconGroups = ICON_CATEGORIES;
+
+  filteredIconGroups = computed(() => {
+    const search = this.iconSearch.toLowerCase().trim();
+    if (!search) return this.allIconGroups;
+    return this.allIconGroups
+      .map((group) => ({
+        label: group.label,
+        icons: group.icons.filter((icon) => icon.includes(search)),
+      }))
+      .filter((group) => group.icons.length > 0);
+  });
+
   form: FormGroup = this.fb.group({
     name: ['', Validators.required],
     parent: [null],
@@ -152,10 +322,12 @@ export class CategoryForm implements OnInit {
     color: ['#2196f3'],
   });
 
+  selectIcon(icon: string): void {
+    this.form.get('icon')?.setValue(icon);
+  }
+
   ngOnInit(): void {
-    // Load flat list for parent selector
     this.categoryService.flat().subscribe((cats) => {
-      // When editing, exclude self and own children from parent options
       if (this.categoryId) {
         this.parentOptions.set(cats.filter((c) => c.id !== this.categoryId));
       } else {
@@ -180,11 +352,10 @@ export class CategoryForm implements OnInit {
           this.snackBar.open('Categoria não encontrada', 'OK', {
             duration: 3000,
           });
-          this.router.navigate(['/categories']);
+          this.router.navigate(['/settings/categories']);
         },
       });
     } else {
-      // Check for parent query param (when adding subcategory)
       const parentId = this.route.snapshot.queryParamMap.get('parent');
       if (parentId) {
         this.form.get('parent')?.setValue(parentId);
@@ -214,7 +385,7 @@ export class CategoryForm implements OnInit {
           'OK',
           { duration: 3000 }
         );
-        this.router.navigate(['/categories']);
+        this.router.navigate(['/settings/categories']);
       },
       error: () => {
         this.saving.set(false);

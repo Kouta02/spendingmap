@@ -38,13 +38,9 @@ import { MatButtonModule } from '@angular/material/button';
             <mat-icon matListItemIcon>receipt_long</mat-icon>
             <span matListItemTitle>Despesas</span>
           </a>
-          <a mat-list-item routerLink="/categories" routerLinkActive="active">
-            <mat-icon matListItemIcon>category</mat-icon>
-            <span matListItemTitle>Categorias</span>
-          </a>
-          <a mat-list-item routerLink="/banks" routerLinkActive="active">
-            <mat-icon matListItemIcon>account_balance</mat-icon>
-            <span matListItemTitle>Bancos</span>
+          <a mat-list-item routerLink="/incomes" routerLinkActive="active">
+            <mat-icon matListItemIcon>attach_money</mat-icon>
+            <span matListItemTitle>Receitas</span>
           </a>
 
           <div class="nav-section">Remuneração</div>
@@ -69,6 +65,12 @@ import { MatButtonModule } from '@angular/material/button';
           <a mat-list-item routerLink="/reports" routerLinkActive="active">
             <mat-icon matListItemIcon>assessment</mat-icon>
             <span matListItemTitle>Relatórios</span>
+          </a>
+
+          <div class="nav-section">Sistema</div>
+          <a mat-list-item routerLink="/settings" routerLinkActive="active">
+            <mat-icon matListItemIcon>settings</mat-icon>
+            <span matListItemTitle>Configurações</span>
           </a>
         </mat-nav-list>
 
@@ -119,7 +121,6 @@ import { MatButtonModule } from '@angular/material/button';
     .page-content {
       padding: 24px;
       flex: 1;
-      overflow: auto;
     }
     .active {
       background-color: var(--mat-sys-secondary-container) !important;

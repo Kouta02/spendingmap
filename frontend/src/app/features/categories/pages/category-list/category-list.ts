@@ -26,7 +26,7 @@ import {
   template: `
     <div class="page-header">
       <h1>Categorias</h1>
-      <a mat-fab extended routerLink="/categories/new">
+      <a mat-fab extended routerLink="/settings/categories/new">
         <mat-icon>add</mat-icon>
         Nova Categoria
       </a>
@@ -40,7 +40,7 @@ import {
       <div class="empty-state">
         <mat-icon>category</mat-icon>
         <p>Nenhuma categoria cadastrada.</p>
-        <a mat-flat-button routerLink="/categories/new">Criar categoria</a>
+        <a mat-flat-button routerLink="/settings/categories/new">Criar categoria</a>
       </div>
     } @else {
       <div class="tree">
@@ -55,10 +55,10 @@ import {
                   }
                   <span class="cat-name">{{ cat.name }}</span>
                   <span class="actions">
-                    <a mat-icon-button [routerLink]="['/categories', cat.id, 'edit']" matTooltip="Editar" class="small-btn">
+                    <a mat-icon-button [routerLink]="['/settings/categories', cat.id, 'edit']" matTooltip="Editar" class="small-btn">
                       <mat-icon>edit</mat-icon>
                     </a>
-                    <a mat-icon-button [routerLink]="['/categories', 'new']" [queryParams]="{parent: cat.id}" matTooltip="Adicionar subcategoria" class="small-btn">
+                    <a mat-icon-button [routerLink]="['/settings/categories', 'new']" [queryParams]="{parent: cat.id}" matTooltip="Adicionar subcategoria" class="small-btn">
                       <mat-icon>add</mat-icon>
                     </a>
                     <button mat-icon-button (click)="confirmDelete(cat)" matTooltip="Excluir" color="warn" class="small-btn">
@@ -76,10 +76,10 @@ import {
                     }
                     <span class="cat-name">{{ child.name }}</span>
                     <span class="actions">
-                      <a mat-icon-button [routerLink]="['/categories', child.id, 'edit']" matTooltip="Editar" class="small-btn">
+                      <a mat-icon-button [routerLink]="['/settings/categories', child.id, 'edit']" matTooltip="Editar" class="small-btn">
                         <mat-icon>edit</mat-icon>
                       </a>
-                      <a mat-icon-button [routerLink]="['/categories', 'new']" [queryParams]="{parent: child.id}" matTooltip="Adicionar subcategoria" class="small-btn">
+                      <a mat-icon-button [routerLink]="['/settings/categories', 'new']" [queryParams]="{parent: child.id}" matTooltip="Adicionar subcategoria" class="small-btn">
                         <mat-icon>add</mat-icon>
                       </a>
                       <button mat-icon-button (click)="confirmDelete(child)" matTooltip="Excluir" color="warn" class="small-btn">
@@ -97,10 +97,10 @@ import {
                       }
                       <span class="cat-name">{{ grandchild.name }}</span>
                       <span class="actions">
-                        <a mat-icon-button [routerLink]="['/categories', grandchild.id, 'edit']" matTooltip="Editar" class="small-btn">
+                        <a mat-icon-button [routerLink]="['/settings/categories', grandchild.id, 'edit']" matTooltip="Editar" class="small-btn">
                           <mat-icon>edit</mat-icon>
                         </a>
-                        <a mat-icon-button [routerLink]="['/categories', 'new']" [queryParams]="{parent: grandchild.id}" matTooltip="Adicionar subcategoria" class="small-btn">
+                        <a mat-icon-button [routerLink]="['/settings/categories', 'new']" [queryParams]="{parent: grandchild.id}" matTooltip="Adicionar subcategoria" class="small-btn">
                           <mat-icon>add</mat-icon>
                         </a>
                         <button mat-icon-button (click)="confirmDelete(grandchild)" matTooltip="Excluir" color="warn" class="small-btn">

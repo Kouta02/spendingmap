@@ -12,4 +12,7 @@ urlpatterns = [
     path('api/dashboard/', include('apps.dashboard.urls')),
     path('api/goals/', include('apps.goals.urls')),
     path('api/reports/', include('apps.reports.urls')),
+    path('api/payment-types/', include('apps.payment_types.urls')),
+    path('api/incomes/', include('apps.incomes.urls')),
+    path('api/financial-calendar/', include('apps.financial_calendar.urls')),
 ]

@@ -7,15 +7,15 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialog } from '@angular/material/dialog';
 
-import { BankService } from '../../../../core/services/bank.service';
-import { Bank } from '../../../../core/models';
+import { PaymentTypeService } from '../../../../core/services/payment-type.service';
+import { PaymentType } from '../../../../core/models';
 import {
   ConfirmDialog,
   ConfirmDialogData,
 } from '../../../../shared/components/confirm-dialog/confirm-dialog';
 
 @Component({
-  selector: 'app-bank-list',
+  selector: 'app-payment-type-list',
   standalone: true,
   imports: [
     RouterLink,
@@ -27,10 +27,10 @@ import {
   ],
   template: `
     <div class="page-header">
-      <h1>Bancos</h1>
-      <a mat-fab extended routerLink="/settings/banks/new">
+      <h2>Tipos de Pagamento</h2>
+      <a mat-fab extended routerLink="/settings/payment-types/new">
         <mat-icon>add</mat-icon>
-        Novo Banco
+        Novo Tipo
       </a>
     </div>
 
@@ -38,42 +38,41 @@ import {
       <div class="loading">
         <mat-spinner diameter="40" />
       </div>
-    } @else if (banks().length === 0) {
+    } @else if (paymentTypes().length === 0) {
       <div class="empty-state">
-        <mat-icon>account_balance</mat-icon>
-        <p>Nenhum banco cadastrado.</p>
-        <a mat-flat-button routerLink="/settings/banks/new">Criar banco</a>
+        <mat-icon>payments</mat-icon>
+        <p>Nenhum tipo de pagamento cadastrado.</p>
+        <a mat-flat-button routerLink="/settings/payment-types/new">Criar tipo</a>
       </div>
     } @else {
-      <table mat-table [dataSource]="banks()" class="data-table">
-        <ng-container matColumnDef="color">
-          <th mat-header-cell *matHeaderCellDef>Cor</th>
-          <td mat-cell *matCellDef="let b">
-            <span
-              class="color-dot"
-              [style.background-color]="b.color || '#ccc'"
-            ></span>
+      <table mat-table [dataSource]="paymentTypes()" class="data-table">
+        <ng-container matColumnDef="icon">
+          <th mat-header-cell *matHeaderCellDef>Icone</th>
+          <td mat-cell *matCellDef="let pt">
+            @if (pt.icon) {
+              <mat-icon>{{ pt.icon }}</mat-icon>
+            }
           </td>
         </ng-container>
 
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Nome</th>
-          <td mat-cell *matCellDef="let b">{{ b.name }}</td>
+          <td mat-cell *matCellDef="let pt">{{ pt.name }}</td>
         </ng-container>
 
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
-          <td mat-cell *matCellDef="let b">
+          <td mat-cell *matCellDef="let pt">
             <a
               mat-icon-button
-              [routerLink]="['/settings/banks', b.id, 'edit']"
+              [routerLink]="['/settings/payment-types', pt.id, 'edit']"
               matTooltip="Editar"
             >
               <mat-icon>edit</mat-icon>
             </a>
             <button
               mat-icon-button
-              (click)="confirmDelete(b)"
+              (click)="confirmDelete(pt)"
               matTooltip="Excluir"
               color="warn"
             >
@@ -94,15 +93,8 @@ import {
       align-items: center;
       margin-bottom: 24px;
     }
-    .page-header h1 { margin: 0; font-size: 1.5rem; }
+    .page-header h2 { margin: 0; font-size: 1.25rem; }
     .data-table { width: 100%; }
-    .color-dot {
-      display: inline-block;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      border: 1px solid rgba(0,0,0,0.12);
-    }
     .loading {
       display: flex;
       justify-content: center;
@@ -123,42 +115,42 @@ import {
     }
   `,
 })
-export class BankList implements OnInit {
-  private readonly bankService = inject(BankService);
+export class PaymentTypeList implements OnInit {
+  private readonly paymentTypeService = inject(PaymentTypeService);
   private readonly dialog = inject(MatDialog);
 
-  banks = signal<Bank[]>([]);
+  paymentTypes = signal<PaymentType[]>([]);
   loading = signal(true);
-  displayedColumns = ['color', 'name', 'actions'];
+  displayedColumns = ['icon', 'name', 'actions'];
 
   ngOnInit(): void {
-    this.loadBanks();
+    this.loadPaymentTypes();
   }
 
-  loadBanks(): void {
+  loadPaymentTypes(): void {
     this.loading.set(true);
-    this.bankService.list().subscribe({
-      next: (banks) => {
-        this.banks.set(banks);
+    this.paymentTypeService.list().subscribe({
+      next: (pts) => {
+        this.paymentTypes.set(pts);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
     });
   }
 
-  confirmDelete(bank: Bank): void {
+  confirmDelete(pt: PaymentType): void {
     const ref = this.dialog.open(ConfirmDialog, {
       data: {
-        title: 'Excluir Banco',
-        message: `Deseja excluir "${bank.name}"?`,
+        title: 'Excluir Tipo de Pagamento',
+        message: `Deseja excluir "${pt.name}"?`,
         confirmText: 'Excluir',
       } as ConfirmDialogData,
     });
 
     ref.afterClosed().subscribe((confirmed) => {
       if (confirmed) {
-        this.bankService.delete(bank.id).subscribe(() => {
-          this.loadBanks();
+        this.paymentTypeService.delete(pt.id).subscribe(() => {
+          this.loadPaymentTypes();
         });
       }
     });

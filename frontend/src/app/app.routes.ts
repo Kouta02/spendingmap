@@ -43,46 +43,126 @@ export const routes: Routes = [
           ),
       },
       {
-        path: 'categories',
+        path: 'incomes',
         loadComponent: () =>
-          import(
-            './features/categories/pages/category-list/category-list'
-          ).then((m) => m.CategoryList),
-      },
-      {
-        path: 'categories/new',
-        loadComponent: () =>
-          import(
-            './features/categories/pages/category-form/category-form'
-          ).then((m) => m.CategoryForm),
-      },
-      {
-        path: 'categories/:id/edit',
-        loadComponent: () =>
-          import(
-            './features/categories/pages/category-form/category-form'
-          ).then((m) => m.CategoryForm),
-      },
-      {
-        path: 'banks',
-        loadComponent: () =>
-          import('./features/banks/pages/bank-list/bank-list').then(
-            (m) => m.BankList
+          import('./features/incomes/pages/income-list/income-list').then(
+            (m) => m.IncomeList
           ),
       },
       {
-        path: 'banks/new',
+        path: 'incomes/new',
         loadComponent: () =>
-          import('./features/banks/pages/bank-form/bank-form').then(
-            (m) => m.BankForm
+          import('./features/incomes/pages/income-form/income-form').then(
+            (m) => m.IncomeForm
           ),
       },
       {
-        path: 'banks/:id/edit',
+        path: 'incomes/:id/edit',
         loadComponent: () =>
-          import('./features/banks/pages/bank-form/bank-form').then(
-            (m) => m.BankForm
+          import('./features/incomes/pages/income-form/income-form').then(
+            (m) => m.IncomeForm
           ),
+      },
+      {
+        path: 'settings',
+        loadComponent: () =>
+          import('./features/settings/pages/settings/settings').then(
+            (m) => m.SettingsPage
+          ),
+        children: [
+          { path: '', redirectTo: 'categories', pathMatch: 'full' },
+          {
+            path: 'categories',
+            loadComponent: () =>
+              import(
+                './features/categories/pages/category-list/category-list'
+              ).then((m) => m.CategoryList),
+          },
+          {
+            path: 'categories/new',
+            loadComponent: () =>
+              import(
+                './features/categories/pages/category-form/category-form'
+              ).then((m) => m.CategoryForm),
+          },
+          {
+            path: 'categories/:id/edit',
+            loadComponent: () =>
+              import(
+                './features/categories/pages/category-form/category-form'
+              ).then((m) => m.CategoryForm),
+          },
+          {
+            path: 'banks',
+            loadComponent: () =>
+              import('./features/banks/pages/bank-list/bank-list').then(
+                (m) => m.BankList
+              ),
+          },
+          {
+            path: 'banks/new',
+            loadComponent: () =>
+              import('./features/banks/pages/bank-form/bank-form').then(
+                (m) => m.BankForm
+              ),
+          },
+          {
+            path: 'banks/:id/edit',
+            loadComponent: () =>
+              import('./features/banks/pages/bank-form/bank-form').then(
+                (m) => m.BankForm
+              ),
+          },
+          {
+            path: 'payment-types',
+            loadComponent: () =>
+              import(
+                './features/settings/pages/payment-type-list/payment-type-list'
+              ).then((m) => m.PaymentTypeList),
+          },
+          {
+            path: 'payment-types/new',
+            loadComponent: () =>
+              import(
+                './features/settings/pages/payment-type-form/payment-type-form'
+              ).then((m) => m.PaymentTypeForm),
+          },
+          {
+            path: 'payment-types/:id/edit',
+            loadComponent: () =>
+              import(
+                './features/settings/pages/payment-type-form/payment-type-form'
+              ).then((m) => m.PaymentTypeForm),
+          },
+          {
+            path: 'payment-dates',
+            loadComponent: () =>
+              import(
+                './features/settings/pages/payment-dates/payment-dates'
+              ).then((m) => m.PaymentDatesPage),
+          },
+          {
+            path: 'credit-cards',
+            loadComponent: () =>
+              import(
+                './features/settings/pages/credit-card-list/credit-card-list'
+              ).then((m) => m.CreditCardList),
+          },
+          {
+            path: 'credit-cards/new',
+            loadComponent: () =>
+              import(
+                './features/settings/pages/credit-card-form/credit-card-form'
+              ).then((m) => m.CreditCardForm),
+          },
+          {
+            path: 'credit-cards/:id/edit',
+            loadComponent: () =>
+              import(
+                './features/settings/pages/credit-card-form/credit-card-form'
+              ).then((m) => m.CreditCardForm),
+          },
+        ],
       },
       {
         path: 'salary',
