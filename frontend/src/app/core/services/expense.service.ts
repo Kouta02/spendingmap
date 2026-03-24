@@ -36,4 +36,26 @@ export class ExpenseService {
   delete(id: string): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}${id}/`);
   }
+
+  markPaid(id: string, amount?: number): Observable<Expense> {
+    const body: Record<string, unknown> = {};
+    if (amount !== undefined) body['amount'] = amount;
+    return this.http.post<Expense>(`${this.baseUrl}${id}/mark-paid/`, body);
+  }
+
+  getBoletoAlerts(): Observable<BoletoAlert[]> {
+    return this.http.get<BoletoAlert[]>(`${this.baseUrl}boleto-alerts/`);
+  }
+}
+
+export interface BoletoAlert {
+  id: string;
+  description: string;
+  amount: string;
+  date: string;
+  due_date: string;
+  days_until: number;
+  alert_level: 'overdue' | 'due_today' | 'due_3_days' | 'due_5_days';
+  category_name: string | null;
+  bank_name: string | null;
 }
