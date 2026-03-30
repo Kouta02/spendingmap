@@ -24,13 +24,13 @@ class Expense(models.Model):
         related_name='expenses',
         verbose_name='tipo de pagamento',
     )
-    bank = models.ForeignKey(
-        'banks.Bank',
+    third_party = models.ForeignKey(
+        'third_parties.ThirdParty',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='expenses',
-        verbose_name='banco',
+        verbose_name='terceiro',
     )
     is_installment = models.BooleanField('é parcelada', default=False)
     installment_current = models.PositiveIntegerField('parcela atual', null=True, blank=True)

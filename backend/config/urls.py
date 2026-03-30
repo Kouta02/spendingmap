@@ -6,7 +6,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/login/', obtain_auth_token, name='api-login'),
     path('api/categories/', include('apps.categories.urls')),
-    path('api/banks/', include('apps.banks.urls')),
+    path('api/third-parties/', include('apps.third_parties.urls')),
     path('api/expenses/', include('apps.expenses.urls')),
     path('api/salary/', include('apps.salary.urls')),
     path('api/dashboard/', include('apps.dashboard.urls')),

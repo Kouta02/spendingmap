@@ -33,13 +33,20 @@ class Income(models.Model):
         related_name='incomes',
         verbose_name='categoria',
     )
-    bank = models.ForeignKey(
-        'banks.Bank',
+    third_party = models.ForeignKey(
+        'third_parties.ThirdParty',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='incomes',
-        verbose_name='banco',
+        verbose_name='terceiro',
+    )
+    financial_month = models.DateField(
+        'mês financeiro',
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='Primeiro dia do mês financeiro (calculado automaticamente)',
     )
     is_recurring = models.BooleanField('é recorrente', default=False)
     notes = models.TextField('observações', blank=True, default='')

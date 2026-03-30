@@ -8,7 +8,7 @@ class ExpenseFilter(filters.FilterSet):
 
     class Meta:
         model = Expense
-        fields = ['category', 'bank', 'payment_type', 'credit_card',
+        fields = ['category', 'third_party', 'payment_type', 'credit_card',
                   'is_installment', 'is_recurring', 'from_paycheck']
 
     def filter_by_month(self, queryset, name, value):

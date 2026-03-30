@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     # Local apps
     'apps.categories',
     'apps.banks',
+    'apps.third_parties',
     'apps.expenses',
     'apps.salary',
     'apps.dashboard',

@@ -14,7 +14,7 @@ from .models import Expense
 
 class ExpenseSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True, default=None)
-    bank_name = serializers.CharField(source='bank.name', read_only=True, default=None)
+    third_party_name = serializers.CharField(source='third_party.name', read_only=True, default=None)
     payment_type_name = serializers.CharField(source='payment_type.name', read_only=True, default=None)
     credit_card_name = serializers.CharField(source='credit_card.name', read_only=True, default=None)
     is_predicted = serializers.BooleanField(read_only=True, default=False)
@@ -25,7 +25,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'id', 'description', 'amount', 'date',
             'category', 'category_name',
             'payment_type', 'payment_type_name',
-            'bank', 'bank_name',
+            'third_party', 'third_party_name',
             'credit_card', 'credit_card_name',
             'financial_month',
             'is_installment', 'installment_current', 'installment_total', 'installment_group_id',
