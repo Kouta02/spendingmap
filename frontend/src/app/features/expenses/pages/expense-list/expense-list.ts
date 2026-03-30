@@ -1,5 +1,5 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { Component, OnInit, HostListener, inject, signal, computed } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,10 +16,10 @@ import { format, subMonths, addMonths, parse } from 'date-fns';
 
 import { ExpenseService } from '../../../../core/services/expense.service';
 import { CategoryService } from '../../../../core/services/category.service';
-import { BankService } from '../../../../core/services/bank.service';
 import { PaymentTypeService } from '../../../../core/services/payment-type.service';
+import { ThirdPartyService } from '../../../../core/services/third-party.service';
 import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
-import { Expense, ExpenseFilters, CategoryFlat, Bank, PaymentType } from '../../../../core/models';
+import { Expense, ExpenseFilters, CategoryFlat, PaymentType, ThirdParty } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 import {
   ConfirmDialog,
@@ -30,6 +30,11 @@ import {
   MarkPaidDialogData,
   MarkPaidDialogResult,
 } from '../../../../shared/components/mark-paid-dialog/mark-paid-dialog';
+
+interface ColumnFilter {
+  search: string;
+  selected: string[] | null;
+}
 
 @Component({
   selector: 'app-expense-list',
@@ -89,11 +94,21 @@ import {
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="filter-field">
-        <mat-label>Banco</mat-label>
-        <mat-select [(ngModel)]="filterBank" (selectionChange)="loadExpenses()">
+        <mat-label>Pessoa</mat-label>
+        <mat-select [(ngModel)]="filterThirdParty" (selectionChange)="loadExpenses()">
           <mat-option value="">Todos</mat-option>
-          @for (bank of banks(); track bank.id) {
-            <mat-option [value]="bank.id">{{ bank.name }}</mat-option>
+          @for (tp of thirdParties(); track tp.id) {
+            <mat-option [value]="tp.id">{{ tp.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="filter-field">
+        <mat-label>Cartão</mat-label>
+        <mat-select [(ngModel)]="filterCreditCard" (selectionChange)="loadExpenses()">
+          <mat-option value="">Todos</mat-option>
+          @for (card of creditCards(); track card.id) {
+            <mat-option [value]="card.id">{{ card.name }}</mat-option>
           }
         </mat-select>
       </mat-form-field>
@@ -115,7 +130,11 @@ import {
       </div>
     } @else {
       <div class="total-bar">
-        <span>Total do mês:</span>
+        @if (hasActiveColumnFilters()) {
+          <span>Total filtrado:</span>
+        } @else {
+          <span>Total do mês:</span>
+        }
         <strong>{{ totalMonth() | currencyBrl }}</strong>
       </div>
 
@@ -126,14 +145,28 @@ import {
           <a mat-flat-button routerLink="/expenses/new">Adicionar despesa</a>
         </div>
       } @else {
-        <table mat-table [dataSource]="expenses()" class="expense-table">
+        <table mat-table [dataSource]="filteredExpenses()" class="expense-table">
           <ng-container matColumnDef="date">
-            <th mat-header-cell *matHeaderCellDef>Data</th>
+            <th mat-header-cell *matHeaderCellDef>
+              <div class="th-filter">
+                Data
+                <button class="col-filter-btn"
+                        [class.col-filter-active]="isColumnFilterActive('date')"
+                        (click)="openFilter('date', $event)">▾</button>
+              </div>
+            </th>
             <td mat-cell *matCellDef="let e">{{ e.date | date: 'dd/MM/yyyy' }}</td>
           </ng-container>
 
           <ng-container matColumnDef="description">
-            <th mat-header-cell *matHeaderCellDef>Descrição</th>
+            <th mat-header-cell *matHeaderCellDef>
+              <div class="th-filter">
+                Descrição
+                <button class="col-filter-btn"
+                        [class.col-filter-active]="isColumnFilterActive('description')"
+                        (click)="openFilter('description', $event)">▾</button>
+              </div>
+            </th>
             <td mat-cell *matCellDef="let e">
               {{ e.description }}
               @if (e.is_installment) {
@@ -149,6 +182,11 @@ import {
               @if (e.from_paycheck) {
                 <span class="badge paycheck" matTooltip="Contracheque">
                   <mat-icon inline>payments</mat-icon>
+                </span>
+              }
+              @if (e.third_party_name) {
+                <span class="badge third-party" [matTooltip]="'Terceiro: ' + e.third_party_name">
+                  <mat-icon inline>person</mat-icon> {{ e.third_party_name }}
                 </span>
               }
               @if (e.is_predicted) {
@@ -189,7 +227,14 @@ import {
           </ng-container>
 
           <ng-container matColumnDef="category">
-            <th mat-header-cell *matHeaderCellDef>Categoria</th>
+            <th mat-header-cell *matHeaderCellDef>
+              <div class="th-filter">
+                Categoria
+                <button class="col-filter-btn"
+                        [class.col-filter-active]="isColumnFilterActive('category')"
+                        (click)="openFilter('category', $event)">▾</button>
+              </div>
+            </th>
             <td mat-cell *matCellDef="let e">
               @if (e.category_name) {
                 <span class="category-chip" [style.border-left-color]="getCategoryColor(e.category)">
@@ -201,22 +246,16 @@ import {
             </td>
           </ng-container>
 
-          <ng-container matColumnDef="bank">
-            <th mat-header-cell *matHeaderCellDef>Banco</th>
-            <td mat-cell *matCellDef="let e">
-              @if (e.bank_name) {
-                <span class="bank-chip" [style.border-left-color]="getBankColor(e.bank)">
-                  {{ e.bank_name }}
-                </span>
-              } @else {
-                <span class="text-muted">—</span>
-              }
-            </td>
-          </ng-container>
-
           <ng-container matColumnDef="payment_type">
-            <th mat-header-cell *matHeaderCellDef>Pagamento</th>
-            <td mat-cell *matCellDef="let e">{{ e.payment_type_name || '—' }}</td>
+            <th mat-header-cell *matHeaderCellDef>
+              <div class="th-filter">
+                Pagamento
+                <button class="col-filter-btn"
+                        [class.col-filter-active]="isColumnFilterActive('payment_type')"
+                        (click)="openFilter('payment_type', $event)">▾</button>
+              </div>
+            </th>
+            <td mat-cell *matCellDef="let e">{{ e.credit_card_name ? e.payment_type_name + ' - ' + e.credit_card_name : (e.payment_type_name || '—') }}</td>
           </ng-container>
 
           <ng-container matColumnDef="amount">
@@ -250,6 +289,68 @@ import {
         </table>
       }
     }
+
+    <!-- Painel de filtro por coluna (overlay) -->
+    @if (activeFilterColumn()) {
+      <div class="fp-backdrop" (click)="closeFilter()"></div>
+      <div class="fp-panel"
+           [style.top.px]="filterPanelPos().top"
+           [style.left.px]="filterPanelPos().left"
+           (click)="$event.stopPropagation()">
+
+        <div class="fp-header">
+          <strong>{{ columnLabels[activeFilterColumn()!] }}</strong>
+          <button class="fp-close" (click)="closeFilter()">✕</button>
+        </div>
+
+        <div class="fp-section">
+          <div class="fp-section-label">Classificar por:</div>
+          <div class="fp-sort-row">
+            <button class="fp-btn"
+                    [class.fp-btn-active]="sortColumn() === activeFilterColumn() && sortDir() === 'asc'"
+                    (click)="sortBy(activeFilterColumn()!, 'asc')">Crescente</button>
+            <button class="fp-btn"
+                    [class.fp-btn-active]="sortColumn() === activeFilterColumn() && sortDir() === 'desc'"
+                    (click)="sortBy(activeFilterColumn()!, 'desc')">Decrescente</button>
+          </div>
+        </div>
+
+        <div class="fp-section">
+          <div class="fp-section-label">Filtro:</div>
+          <input class="fp-input"
+                 placeholder="Pesquisar (nesta coluna)"
+                 [value]="getFilterSearch(activeFilterColumn()!)"
+                 (input)="setFilterSearch(activeFilterColumn()!, $any($event.target).value)">
+        </div>
+
+        <div class="fp-section">
+          <div class="fp-section-label">Valores:</div>
+          <label class="fp-value-row">
+            <input type="checkbox"
+                   [checked]="isAllSelected(activeFilterColumn()!)"
+                   (click)="$event.preventDefault(); toggleAll(activeFilterColumn()!)">
+            <span>(Selecionar tudo)</span>
+          </label>
+          <div class="fp-values-list">
+            @for (opt of filteredDistinctValues(); track opt.value) {
+              <label class="fp-value-row">
+                <input type="checkbox"
+                       [checked]="isValueSelected(activeFilterColumn()!, opt.value)"
+                       (click)="$event.preventDefault(); toggleValue(activeFilterColumn()!, opt.value)">
+                <span>{{ opt.label }}</span>
+              </label>
+            }
+            @if (filteredDistinctValues().length === 0) {
+              <div class="fp-empty">Nenhum valor encontrado.</div>
+            }
+          </div>
+        </div>
+
+        <div class="fp-actions">
+          <button class="fp-btn" (click)="clearColumnFilter(activeFilterColumn()!)">Limpar filtro</button>
+        </div>
+      </div>
+    }
   `,
   styles: `
     .page-header {
@@ -282,7 +383,7 @@ import {
       text-transform: capitalize;
     }
     .filter-field {
-      width: 180px;
+      width: 160px;
     }
     .total-bar {
       display: flex;
@@ -327,6 +428,10 @@ import {
       background: #e8f5e9;
       color: #2e7d32;
     }
+    .third-party {
+      background: #e1bee7;
+      color: #6a1b9a;
+    }
     .predicted {
       background: #fff3e0;
       color: #e65100;
@@ -365,8 +470,7 @@ import {
       background: #e8f5e9;
       color: #2e7d32;
     }
-    .category-chip,
-    .bank-chip {
+    .category-chip {
       border-left: 3px solid #ccc;
       padding-left: 6px;
     }
@@ -391,20 +495,171 @@ import {
       width: 48px;
       height: 48px;
     }
+
+    /* ========== Filtro por coluna (estilo Excel) ========== */
+    .th-filter {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .col-filter-btn {
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      padding: 0;
+      font-size: 12px;
+      line-height: 18px;
+      width: 18px;
+      height: 18px;
+      opacity: 0.6;
+      border-radius: 4px;
+      transition: opacity 0.15s, background 0.15s;
+    }
+    .col-filter-btn:hover {
+      opacity: 1;
+      background: rgba(0, 0, 0, 0.06);
+    }
+    .col-filter-btn.col-filter-active {
+      opacity: 1;
+      font-weight: 700;
+      color: #1565c0;
+    }
+
+    /* Backdrop */
+    .fp-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 999;
+    }
+
+    /* Painel */
+    .fp-panel {
+      position: fixed;
+      z-index: 1000;
+      min-width: 280px;
+      max-width: 340px;
+      max-height: 460px;
+      overflow: auto;
+      background: #fff;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+      padding: 12px;
+    }
+    .fp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .fp-close {
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      font-size: 14px;
+      opacity: 0.7;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+    .fp-close:hover {
+      opacity: 1;
+      background: rgba(0, 0, 0, 0.06);
+    }
+    .fp-section {
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      padding-top: 8px;
+      margin-top: 8px;
+    }
+    .fp-section-label {
+      font-size: 12px;
+      opacity: 0.85;
+      margin-bottom: 6px;
+    }
+    .fp-sort-row {
+      display: flex;
+      gap: 8px;
+    }
+    .fp-btn {
+      padding: 7px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      background: #f7f7f7;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .fp-btn:hover {
+      background: #efefef;
+    }
+    .fp-btn-active {
+      background: #e9f2ff;
+      border-color: #9ac2ff;
+      font-weight: 700;
+    }
+    .fp-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      outline: none;
+      font-size: 13px;
+    }
+    .fp-input:focus {
+      border-color: #9ac2ff;
+    }
+    .fp-value-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 2px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 13px;
+    }
+    .fp-value-row:hover {
+      background: rgba(0, 0, 0, 0.03);
+      border-radius: 4px;
+    }
+    .fp-values-list {
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px dashed rgba(0, 0, 0, 0.12);
+    }
+    .fp-empty {
+      font-size: 12px;
+      opacity: 0.7;
+      padding: 6px 2px;
+    }
+    .fp-actions {
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      padding-top: 10px;
+      margin-top: 10px;
+      display: flex;
+      justify-content: flex-end;
+    }
   `,
 })
 export class ExpenseList implements OnInit {
   private readonly expenseService = inject(ExpenseService);
   private readonly categoryService = inject(CategoryService);
-  private readonly bankService = inject(BankService);
   private readonly paymentTypeService = inject(PaymentTypeService);
+  private readonly thirdPartyService = inject(ThirdPartyService);
   private readonly financialCalendarService = inject(FinancialCalendarService);
   private readonly dialog = inject(MatDialog);
 
   expenses = signal<Expense[]>([]);
   categories = signal<CategoryFlat[]>([]);
-  banks = signal<Bank[]>([]);
   paymentTypes = signal<PaymentType[]>([]);
+  thirdParties = signal<ThirdParty[]>([]);
+  creditCards = signal<{ id: string; name: string }[]>([]);
 
   categoryGroups = computed(() => {
     const cats = this.categories();
@@ -419,33 +674,260 @@ export class ExpenseList implements OnInit {
   monthLabel = signal('');
 
   filterCategory = '';
-  filterBank = '';
+  filterThirdParty = '';
+  filterCreditCard = '';
   filterPaymentType = '';
 
   displayedColumns = [
     'date',
     'description',
     'category',
-    'bank',
     'payment_type',
     'amount',
     'actions',
   ];
 
+  // ========== Filtro por coluna (estilo Excel) ==========
+
+  readonly columnLabels: Record<string, string> = {
+    date: 'Data',
+    description: 'Descrição',
+    category: 'Categoria',
+    payment_type: 'Pagamento',
+  };
+
+  activeFilterColumn = signal<string | null>(null);
+  filterPanelPos = signal({ top: 0, left: 0 });
+  sortColumn = signal<string | null>(null);
+  sortDir = signal<'asc' | 'desc'>('asc');
+  columnFilters = signal<Record<string, ColumnFilter>>({});
+
+  distinctValues = computed(() => {
+    const expenses = this.expenses();
+    const result: Record<string, { value: string; label: string }[]> = {};
+
+    for (const col of Object.keys(this.columnLabels)) {
+      const map = new Map<string, string>();
+      for (const e of expenses) {
+        const value = this.getColumnValue(e, col);
+        const label = this.getColumnDisplayLabel(e, col);
+        if (value && !map.has(value)) map.set(value, label);
+      }
+      const arr = Array.from(map.entries()).map(([v, l]) => ({ value: v, label: l }));
+      if (col === 'date') {
+        arr.sort((a, b) => a.value.localeCompare(b.value));
+      } else {
+        arr.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+      }
+      result[col] = arr;
+    }
+
+    return result;
+  });
+
+  filteredDistinctValues = computed(() => {
+    const col = this.activeFilterColumn();
+    if (!col) return [];
+    const all = this.distinctValues()[col] || [];
+    const search = (this.columnFilters()[col]?.search || '').trim().toLowerCase();
+    if (!search) return all;
+    return all.filter((opt) => opt.label.toLowerCase().includes(search));
+  });
+
+  filteredExpenses = computed(() => {
+    let result = this.expenses();
+    const filters = this.columnFilters();
+
+    for (const [col, f] of Object.entries(filters)) {
+      if (f.selected !== null && f.selected.length > 0) {
+        const selectedSet = new Set(f.selected);
+        result = result.filter((e) => selectedSet.has(this.getColumnValue(e, col)));
+      }
+      const needle = f.search.trim().toLowerCase();
+      if (needle) {
+        result = result.filter((e) => this.getColumnValue(e, col).toLowerCase().includes(needle));
+      }
+    }
+
+    const sortCol = this.sortColumn();
+    const dir = this.sortDir();
+    if (sortCol) {
+      result = [...result].sort((a, b) => {
+        let va: string | number = this.getColumnValue(a, sortCol);
+        let vb: string | number = this.getColumnValue(b, sortCol);
+        if (sortCol === 'date') {
+          return dir === 'asc' ? va.localeCompare(vb as string) : (vb as string).localeCompare(va as string);
+        }
+        const cmp = (va as string).localeCompare(vb as string, 'pt-BR', { sensitivity: 'base' });
+        return dir === 'asc' ? cmp : -cmp;
+      });
+    }
+
+    return result;
+  });
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.activeFilterColumn()) this.closeFilter();
+  }
+
+  openFilter(column: string, event: MouseEvent): void {
+    event.stopPropagation();
+    event.preventDefault();
+
+    if (this.activeFilterColumn() === column) {
+      this.closeFilter();
+      return;
+    }
+
+    const btn = event.target as HTMLElement;
+    const rect = btn.getBoundingClientRect();
+    const panelWidth = 310;
+    let left = rect.right - panelWidth;
+    if (left < 8) left = 8;
+    if (left + panelWidth > window.innerWidth - 8) left = window.innerWidth - panelWidth - 8;
+
+    let top = rect.bottom + 6;
+    if (top + 400 > window.innerHeight) {
+      top = rect.top - 400 - 6;
+      if (top < 8) top = 8;
+    }
+
+    this.filterPanelPos.set({ top, left });
+    this.activeFilterColumn.set(column);
+  }
+
+  closeFilter(): void {
+    this.activeFilterColumn.set(null);
+  }
+
+  sortBy(column: string, dir: 'asc' | 'desc'): void {
+    this.sortColumn.set(column);
+    this.sortDir.set(dir);
+    this.closeFilter();
+  }
+
+  getFilterSearch(column: string): string {
+    return this.columnFilters()[column]?.search || '';
+  }
+
+  setFilterSearch(column: string, text: string): void {
+    const current = { ...this.columnFilters() };
+    const existing = current[column] || { search: '', selected: null };
+    current[column] = { ...existing, search: text };
+    this.columnFilters.set(current);
+  }
+
+  isAllSelected(column: string): boolean {
+    return this.columnFilters()[column]?.selected === null || this.columnFilters()[column]?.selected === undefined;
+  }
+
+  isValueSelected(column: string, value: string): boolean {
+    const f = this.columnFilters()[column];
+    if (!f || f.selected === null) return true;
+    return f.selected.includes(value);
+  }
+
+  toggleAll(column: string): void {
+    const current = { ...this.columnFilters() };
+    const existing = current[column] || { search: '', selected: null };
+    current[column] = { ...existing, selected: null };
+    this.columnFilters.set(current);
+  }
+
+  toggleValue(column: string, value: string): void {
+    const current = { ...this.columnFilters() };
+    const existing = current[column] || { search: '', selected: null };
+
+    if (existing.selected === null) {
+      current[column] = { ...existing, selected: [value] };
+    } else {
+      const set = new Set(existing.selected);
+      if (set.has(value)) {
+        set.delete(value);
+      } else {
+        set.add(value);
+      }
+      const next = Array.from(set);
+      current[column] = { ...existing, selected: next.length > 0 ? next : null };
+    }
+
+    this.columnFilters.set(current);
+  }
+
+  clearColumnFilter(column: string): void {
+    const current = { ...this.columnFilters() };
+    delete current[column];
+    this.columnFilters.set(current);
+    if (this.sortColumn() === column) {
+      this.sortColumn.set(null);
+    }
+    this.closeFilter();
+  }
+
+  isColumnFilterActive(column: string): boolean {
+    const f = this.columnFilters()[column];
+    if (!f) return false;
+    return f.search.trim() !== '' || f.selected !== null;
+  }
+
+  hasActiveColumnFilters(): boolean {
+    return Object.keys(this.columnFilters()).some((col) => this.isColumnFilterActive(col));
+  }
+
+  private getColumnValue(e: Expense, column: string): string {
+    switch (column) {
+      case 'date':
+        return e.date;
+      case 'description':
+        return e.description;
+      case 'category':
+        return e.category_name || '';
+      case 'payment_type':
+        return e.credit_card_name
+          ? (e.payment_type_name || '') + ' - ' + e.credit_card_name
+          : (e.payment_type_name || '');
+      default:
+        return '';
+    }
+  }
+
+  private getColumnDisplayLabel(e: Expense, column: string): string {
+    switch (column) {
+      case 'date':
+        const parts = e.date.split('-');
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      case 'description':
+        return e.description;
+      case 'category':
+        return e.category_name || '(sem categoria)';
+      case 'payment_type':
+        return e.credit_card_name
+          ? (e.payment_type_name || '—') + ' - ' + e.credit_card_name
+          : (e.payment_type_name || '—');
+      default:
+        return '';
+    }
+  }
+
+  // ========== Funcionalidades existentes ==========
+
   ngOnInit(): void {
     this.categoryService.flat().subscribe((cats) => this.categories.set(cats));
-    this.bankService.list().subscribe((banks) => this.banks.set(banks));
     this.paymentTypeService.list().subscribe((pts) => this.paymentTypes.set(pts));
+    this.thirdPartyService.list().subscribe((tps) => this.thirdParties.set(tps));
+    this.financialCalendarService.listCreditCards().subscribe((cards) =>
+      this.creditCards.set(cards.map((c) => ({ id: c.id, name: c.name })))
+    );
 
-    // Buscar o mês financeiro corrente antes de carregar despesas
     this.financialCalendarService.getCurrentFinancialMonth().subscribe({
       next: (fm) => {
-        this.currentMonth.set(format(new Date(fm.year, fm.month - 1, 1), 'yyyy-MM'));
+        const fmStr = format(new Date(fm.year, fm.month - 1, 1), 'yyyy-MM');
+        this.currentMonth.set(fmStr);
         this.updateMonthLabel();
         this.loadExpenses();
       },
       error: () => {
-        // Fallback: mês calendário
         this.updateMonthLabel();
         this.loadExpenses();
       },
@@ -454,14 +936,18 @@ export class ExpenseList implements OnInit {
 
   loadExpenses(): void {
     this.loading.set(true);
+    this.columnFilters.set({});
+    this.sortColumn.set(null);
+    this.closeFilter();
+
     const filters: ExpenseFilters = {
       month: this.currentMonth(),
       ordering: '-date',
     };
     if (this.filterCategory) filters.category = this.filterCategory;
-    if (this.filterBank) filters.bank = this.filterBank;
-    if (this.filterPaymentType)
-      filters.payment_type = this.filterPaymentType;
+    if (this.filterThirdParty) filters.third_party = this.filterThirdParty;
+    if (this.filterCreditCard) filters.credit_card = this.filterCreditCard;
+    if (this.filterPaymentType) filters.payment_type = this.filterPaymentType;
 
     this.expenseService.list(filters).subscribe({
       next: (expenses) => {
@@ -473,7 +959,7 @@ export class ExpenseList implements OnInit {
   }
 
   totalMonth(): number {
-    return this.expenses().reduce(
+    return this.filteredExpenses().reduce(
       (sum, e) => sum + parseFloat(String(e.amount)),
       0
     );
@@ -505,11 +991,6 @@ export class ExpenseList implements OnInit {
     return (
       this.categories().find((c) => c.id === categoryId)?.color || '#ccc'
     );
-  }
-
-  getBankColor(bankId: string | null): string {
-    if (!bankId) return '#ccc';
-    return this.banks().find((b) => b.id === bankId)?.color || '#ccc';
   }
 
   getBoletoAlert(expense: Expense): string | null {
