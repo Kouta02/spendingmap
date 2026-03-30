@@ -34,10 +34,20 @@ class Command(BaseCommand):
 
         expenses = Expense.objects.filter(
             date__year=year,
-        ).select_related('credit_card')
+        ).select_related('credit_card', 'payment_type')
 
         updated = 0
+        skipped = 0
         for exp in expenses:
+            # Despesas do contracheque têm financial_month vinculado ao
+            # snapshot salarial, não à data — não recalcular
+            if exp.from_paycheck or (
+                exp.payment_type
+                and exp.payment_type.name == 'Descontado do Contracheque'
+            ):
+                skipped += 1
+                continue
+
             if exp.credit_card:
                 new_fm = get_credit_card_financial_month(exp.date, exp.credit_card)
             else:
@@ -49,5 +59,8 @@ class Command(BaseCommand):
                 updated += 1
 
         self.stdout.write(
-            self.style.SUCCESS(f'Concluído! {updated} despesas atualizadas de {expenses.count()} total.')
+            self.style.SUCCESS(
+                f'Concluído! {updated} despesas atualizadas '
+                f'({skipped} descontos do contracheque ignorados).'
+            )
         )

@@ -1,3 +1,5 @@
+from datetime import date as date_type
+
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -20,7 +22,7 @@ class GoalViewSet(ModelViewSet):
         qs = self.get_queryset()
         if month:
             year, m = month.split('-')
-            qs = qs.filter(month__year=int(year), month__month=int(m))
+            qs = qs.filter(month=date_type(int(year), int(m), 1))
 
         serializer = self.get_serializer(qs, many=True)
         alerts = [g for g in serializer.data if g['status'] in ('alerta', 'excedido')]

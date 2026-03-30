@@ -9,6 +9,10 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from apps.expenses.models import Expense
+from apps.financial_calendar.services import (
+    get_financial_month_for_date,
+    get_financial_month_range,
+)
 from apps.salary.models import SalarySnapshot
 
 
@@ -22,9 +26,10 @@ def summary_by_period(request):
     end = request.query_params.get('end')
 
     if not start or not end:
-        today = date.today()
-        start = date(today.year, today.month, 1).isoformat()
-        end = today.isoformat()
+        fm = get_financial_month_for_date(date.today())
+        fm_start, fm_end = get_financial_month_range(fm.year, fm.month)
+        start = fm_start.isoformat()
+        end = fm_end.isoformat()
 
     qs = Expense.objects.filter(date__gte=start, date__lte=end).select_related('payment_type')
 
@@ -70,9 +75,10 @@ def by_category_period(request):
     end = request.query_params.get('end')
 
     if not start or not end:
-        today = date.today()
-        start = date(today.year, today.month, 1).isoformat()
-        end = today.isoformat()
+        fm = get_financial_month_for_date(date.today())
+        fm_start, fm_end = get_financial_month_range(fm.year, fm.month)
+        start = fm_start.isoformat()
+        end = fm_end.isoformat()
 
     data = (
         Expense.objects.filter(date__gte=start, date__lte=end)
@@ -109,15 +115,17 @@ def installments_projection(request):
     Retorna parcelas agrupadas por installment_group_id com parcelas restantes.
     """
     today = date.today()
-    ref = date(today.year, today.month, 1)
+    fm = get_financial_month_for_date(today)
+    fm_start, _ = get_financial_month_range(fm.year, fm.month)
+    ref = fm_start
 
-    # Buscar parcelas futuras (data >= mês atual)
+    # Buscar parcelas futuras (data >= início do mês financeiro atual)
     qs = (
         Expense.objects.filter(
             is_installment=True,
             date__gte=ref,
         )
-        .select_related('category', 'bank')
+        .select_related('category', 'credit_card')
         .order_by('installment_group_id', 'date')
     )
 
@@ -131,7 +139,7 @@ def installments_projection(request):
                 'description': exp.description,
                 'amount_per_installment': str(exp.amount),
                 'category_name': exp.category.name if exp.category else None,
-                'bank_name': exp.bank.name if exp.bank else None,
+                'credit_card_name': exp.credit_card.name if exp.credit_card else None,
                 'installment_total': exp.installment_total,
                 'remaining': 0,
                 'total_remaining': Decimal('0'),
@@ -166,13 +174,13 @@ def monthly_comparison(request):
     Query param: ?months=6 (padrão: 6)
     """
     months_count = int(request.query_params.get('months', 6))
-    today = date.today()
+    current_fm = get_financial_month_for_date(date.today())
 
     result = []
     for i in range(months_count - 1, -1, -1):
-        # Calcular mês
-        y = today.year
-        m = today.month - i
+        # Calcular mês financeiro
+        y = current_fm.year
+        m = current_fm.month - i
         while m <= 0:
             m += 12
             y -= 1

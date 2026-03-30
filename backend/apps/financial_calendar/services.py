@@ -141,7 +141,7 @@ def get_credit_card_financial_month(purchase_date, credit_card):
     due_day = credit_card.due_day
 
     # Determinar em qual mês a fatura fecha
-    if purchase_date.day <= closing_day:
+    if purchase_date.day < closing_day:
         # Compra antes do fechamento: fatura fecha neste mês
         closing_month = purchase_date.month
         closing_year = purchase_date.year
