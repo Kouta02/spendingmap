@@ -17,7 +17,10 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { CategoryService } from '../../../../core/services/category.service';
+import { IncomeService } from '../../../../core/services/income.service';
 import { CategoryFlat } from '../../../../core/models';
+
+type CategoryMode = 'expense' | 'income';
 
 const ICON_CATEGORIES: { label: string; icons: string[] }[] = [
   {
@@ -88,7 +91,7 @@ const ICON_CATEGORIES: { label: string; icons: string[] }[] = [
   ],
   template: `
     <div class="page-header">
-      <h1>{{ isEditing() ? 'Editar Categoria' : 'Nova Categoria' }}</h1>
+      <h1>{{ isEditing() ? 'Editar Categoria' : 'Nova Categoria' }}{{ categoryMode === 'income' ? ' de Receita' : '' }}</h1>
     </div>
 
     <form [formGroup]="form" (ngSubmit)="onSubmit()" class="entity-form">
@@ -100,15 +103,17 @@ const ICON_CATEGORIES: { label: string; icons: string[] }[] = [
         }
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="full-width">
-        <mat-label>Categoria pai (opcional)</mat-label>
-        <mat-select formControlName="parent">
-          <mat-option [value]="null">Nenhuma (raiz)</mat-option>
-          @for (cat of parentOptions(); track cat.id) {
-            <mat-option [value]="cat.id">{{ cat.full_path }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
+      @if (categoryMode === 'expense') {
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Categoria pai (opcional)</mat-label>
+          <mat-select formControlName="parent">
+            <mat-option [value]="null">Nenhuma (raiz)</mat-option>
+            @for (cat of parentOptions(); track cat.id) {
+              <mat-option [value]="cat.id">{{ cat.full_path }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+      }
 
       <div class="icon-picker-section">
         <label class="section-label">
@@ -294,12 +299,14 @@ export class CategoryForm implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly categoryService = inject(CategoryService);
+  private readonly incomeService = inject(IncomeService);
   private readonly snackBar = inject(MatSnackBar);
 
   isEditing = signal(false);
   saving = signal(false);
   parentOptions = signal<CategoryFlat[]>([]);
   private categoryId = '';
+  categoryMode: CategoryMode = 'expense';
 
   iconSearch = '';
   readonly allIconGroups = ICON_CATEGORIES;
@@ -327,6 +334,57 @@ export class CategoryForm implements OnInit {
   }
 
   ngOnInit(): void {
+    const typeParam = this.route.snapshot.queryParamMap.get('type');
+    if (typeParam === 'income') {
+      this.categoryMode = 'income';
+    }
+
+    const id = this.route.snapshot.paramMap.get('id');
+    if (id) {
+      this.isEditing.set(true);
+      this.categoryId = id;
+
+      if (this.categoryMode === 'income') {
+        this.incomeService.getCategory(id).subscribe({
+          next: (cat) => {
+            this.form.patchValue({
+              name: cat.name,
+              icon: cat.icon,
+              color: cat.color || '#2196f3',
+            });
+          },
+          error: () => {
+            this.snackBar.open('Categoria não encontrada', 'OK', { duration: 3000 });
+            this.router.navigate(['/settings/categories']);
+          },
+        });
+      } else {
+        this.categoryService.get(id).subscribe({
+          next: (cat) => {
+            this.form.patchValue({
+              name: cat.name,
+              parent: cat.parent,
+              icon: cat.icon,
+              color: cat.color || '#2196f3',
+            });
+            this.loadParentOptions();
+          },
+          error: () => {
+            this.snackBar.open('Categoria não encontrada', 'OK', { duration: 3000 });
+            this.router.navigate(['/settings/categories']);
+          },
+        });
+      }
+    } else if (this.categoryMode === 'expense') {
+      this.loadParentOptions();
+      const parentId = this.route.snapshot.queryParamMap.get('parent');
+      if (parentId) {
+        this.form.get('parent')?.setValue(parentId);
+      }
+    }
+  }
+
+  private loadParentOptions(): void {
     this.categoryService.flat().subscribe((cats) => {
       if (this.categoryId) {
         this.parentOptions.set(cats.filter((c) => c.id !== this.categoryId));
@@ -334,33 +392,6 @@ export class CategoryForm implements OnInit {
         this.parentOptions.set(cats);
       }
     });
-
-    const id = this.route.snapshot.paramMap.get('id');
-    if (id) {
-      this.isEditing.set(true);
-      this.categoryId = id;
-      this.categoryService.get(id).subscribe({
-        next: (cat) => {
-          this.form.patchValue({
-            name: cat.name,
-            parent: cat.parent,
-            icon: cat.icon,
-            color: cat.color || '#2196f3',
-          });
-        },
-        error: () => {
-          this.snackBar.open('Categoria não encontrada', 'OK', {
-            duration: 3000,
-          });
-          this.router.navigate(['/settings/categories']);
-        },
-      });
-    } else {
-      const parentId = this.route.snapshot.queryParamMap.get('parent');
-      if (parentId) {
-        this.form.get('parent')?.setValue(parentId);
-      }
-    }
   }
 
   onColorChange(event: Event): void {
@@ -372,27 +403,53 @@ export class CategoryForm implements OnInit {
     if (this.form.invalid) return;
 
     this.saving.set(true);
-    const data = this.form.value;
 
-    const request$ = this.isEditing()
-      ? this.categoryService.update(this.categoryId, data)
-      : this.categoryService.create(data);
+    if (this.categoryMode === 'income') {
+      const data = {
+        name: this.form.value.name,
+        icon: this.form.value.icon || '',
+        color: this.form.value.color || '',
+      };
 
-    request$.subscribe({
-      next: () => {
-        this.snackBar.open(
-          this.isEditing() ? 'Categoria atualizada!' : 'Categoria criada!',
-          'OK',
-          { duration: 3000 }
-        );
-        this.router.navigate(['/settings/categories']);
-      },
-      error: () => {
-        this.saving.set(false);
-        this.snackBar.open('Erro ao salvar categoria.', 'OK', {
-          duration: 5000,
-        });
-      },
-    });
+      const request$ = this.isEditing()
+        ? this.incomeService.updateCategory(this.categoryId, data)
+        : this.incomeService.createCategory(data);
+
+      request$.subscribe({
+        next: () => {
+          this.snackBar.open(
+            this.isEditing() ? 'Categoria atualizada!' : 'Categoria criada!',
+            'OK',
+            { duration: 3000 }
+          );
+          this.router.navigate(['/settings/categories']);
+        },
+        error: () => {
+          this.saving.set(false);
+          this.snackBar.open('Erro ao salvar categoria.', 'OK', { duration: 5000 });
+        },
+      });
+    } else {
+      const data = this.form.value;
+
+      const request$ = this.isEditing()
+        ? this.categoryService.update(this.categoryId, data)
+        : this.categoryService.create(data);
+
+      request$.subscribe({
+        next: () => {
+          this.snackBar.open(
+            this.isEditing() ? 'Categoria atualizada!' : 'Categoria criada!',
+            'OK',
+            { duration: 3000 }
+          );
+          this.router.navigate(['/settings/categories']);
+        },
+        error: () => {
+          this.saving.set(false);
+          this.snackBar.open('Erro ao salvar categoria.', 'OK', { duration: 5000 });
+        },
+      });
+    }
   }
 }

@@ -20,13 +20,13 @@ import { MatIconModule } from '@angular/material/icon';
         Categorias
       </a>
       <a mat-tab-link
-        routerLink="banks"
+        routerLink="third-parties"
         routerLinkActive
-        #bankActive="routerLinkActive"
-        [active]="bankActive.isActive"
+        #tpActive="routerLinkActive"
+        [active]="tpActive.isActive"
       >
-        <mat-icon>account_balance</mat-icon>
-        Bancos
+        <mat-icon>people</mat-icon>
+        Terceiros
       </a>
       <a mat-tab-link
         routerLink="payment-types"

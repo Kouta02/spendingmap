@@ -13,8 +13,9 @@ import { DatePipe } from '@angular/common';
 import { format, subMonths, addMonths, parse } from 'date-fns';
 
 import { IncomeService } from '../../../../core/services/income.service';
-import { BankService } from '../../../../core/services/bank.service';
-import { Income, IncomeFilters, IncomeCategory, Bank } from '../../../../core/models';
+import { ThirdPartyService } from '../../../../core/services/third-party.service';
+import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
+import { Income, IncomeFilters, IncomeCategory, ThirdParty } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 import {
   ConfirmDialog,
@@ -61,11 +62,11 @@ import {
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="filter-field">
-        <mat-label>Banco</mat-label>
-        <mat-select [(ngModel)]="filterBank" (selectionChange)="loadIncomes()">
+        <mat-label>Pessoa</mat-label>
+        <mat-select [(ngModel)]="filterThirdParty" (selectionChange)="loadIncomes()">
           <mat-option value="">Todos</mat-option>
-          @for (bank of banks(); track bank.id) {
-            <mat-option [value]="bank.id">{{ bank.name }}</mat-option>
+          @for (tp of thirdParties(); track tp.id) {
+            <mat-option [value]="tp.id">{{ tp.name }}</mat-option>
           }
         </mat-select>
       </mat-form-field>
@@ -103,17 +104,17 @@ import {
                   <mat-icon inline>repeat</mat-icon>
                 </span>
               }
+              @if (i.third_party_name) {
+                <span class="badge third-party" [matTooltip]="'Terceiro: ' + i.third_party_name">
+                  <mat-icon inline>person</mat-icon> {{ i.third_party_name }}
+                </span>
+              }
             </td>
           </ng-container>
 
           <ng-container matColumnDef="category">
             <th mat-header-cell *matHeaderCellDef>Categoria</th>
             <td mat-cell *matCellDef="let i">{{ i.category_name || '—' }}</td>
-          </ng-container>
-
-          <ng-container matColumnDef="bank">
-            <th mat-header-cell *matHeaderCellDef>Banco</th>
-            <td mat-cell *matCellDef="let i">{{ i.bank_name || '—' }}</td>
           </ng-container>
 
           <ng-container matColumnDef="amount">
@@ -154,6 +155,7 @@ import {
     .badge { display: inline-flex; align-items: center; font-size: 0.75rem; padding: 2px 6px; border-radius: 12px; margin-left: 6px; vertical-align: middle; }
     .badge mat-icon { font-size: 14px; width: 14px; height: 14px; }
     .recurring { background: #e8f5e9; color: #2e7d32; }
+    .third-party { background: #e1bee7; color: #6a1b9a; }
     .loading { display: flex; justify-content: center; padding: 48px; }
     .empty-state { display: flex; flex-direction: column; align-items: center; padding: 48px; gap: 16px; color: var(--mat-sys-on-surface-variant); }
     .empty-state mat-icon { font-size: 48px; width: 48px; height: 48px; }
@@ -161,33 +163,44 @@ import {
 })
 export class IncomeList implements OnInit {
   private readonly incomeService = inject(IncomeService);
-  private readonly bankService = inject(BankService);
+  private readonly thirdPartyService = inject(ThirdPartyService);
+  private readonly financialCalendarService = inject(FinancialCalendarService);
   private readonly dialog = inject(MatDialog);
 
   incomes = signal<Income[]>([]);
   categories = signal<IncomeCategory[]>([]);
-  banks = signal<Bank[]>([]);
+  thirdParties = signal<ThirdParty[]>([]);
   loading = signal(true);
   currentMonth = signal(format(new Date(), 'yyyy-MM'));
   monthLabel = signal('');
 
   filterCategory = '';
-  filterBank = '';
+  filterThirdParty = '';
 
-  displayedColumns = ['date', 'description', 'category', 'bank', 'amount', 'actions'];
+  displayedColumns = ['date', 'description', 'category', 'amount', 'actions'];
 
   ngOnInit(): void {
-    this.updateMonthLabel();
     this.incomeService.listCategories().subscribe((cats) => this.categories.set(cats));
-    this.bankService.list().subscribe((banks) => this.banks.set(banks));
-    this.loadIncomes();
+    this.thirdPartyService.list().subscribe((tps) => this.thirdParties.set(tps));
+
+    this.financialCalendarService.getCurrentFinancialMonth().subscribe({
+      next: (fm) => {
+        this.currentMonth.set(format(new Date(fm.year, fm.month - 1, 1), 'yyyy-MM'));
+        this.updateMonthLabel();
+        this.loadIncomes();
+      },
+      error: () => {
+        this.updateMonthLabel();
+        this.loadIncomes();
+      },
+    });
   }
 
   loadIncomes(): void {
     this.loading.set(true);
     const filters: IncomeFilters = { month: this.currentMonth(), ordering: '-date' };
     if (this.filterCategory) filters.category = this.filterCategory;
-    if (this.filterBank) filters.bank = this.filterBank;
+    if (this.filterThirdParty) filters.third_party = this.filterThirdParty;
 
     this.incomeService.list(filters).subscribe({
       next: (incomes) => { this.incomes.set(incomes); this.loading.set(false); },

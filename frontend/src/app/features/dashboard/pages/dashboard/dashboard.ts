@@ -26,14 +26,16 @@ import type { EChartsOption } from 'echarts';
 
 import { RouterLink } from '@angular/router';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { DashboardService } from '../../../../core/services/dashboard.service';
+import { MatMenuModule } from '@angular/material/menu';
+import { DashboardService, ExpenseDetails, ExpenseDetailItem } from '../../../../core/services/dashboard.service';
 import { GoalService } from '../../../../core/services/goal.service';
 import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
 import { ExpenseService, BoletoAlert } from '../../../../core/services/expense.service';
 import {
   MonthlySummary,
   CategoryBreakdown,
-  BankBreakdown,
+  CreditCardBreakdown,
+  ThirdPartyBreakdown,
   MonthlyEvolution,
   Goal,
 } from '../../../../core/models';
@@ -49,6 +51,7 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
     MatButtonModule,
     MatProgressSpinnerModule,
     MatProgressBarModule,
+    MatMenuModule,
     NgxEchartsDirective,
     RouterLink,
     CurrencyBrlPipe,
@@ -108,10 +111,26 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
             <div class="card-info">
               <span class="card-label">Descontos no Contracheque</span>
               <span class="card-value">{{ toNum(summary()?.total_descontos_salario) | currencyBrl }}</span>
-              <a routerLink="/salary" class="card-link">Ver detalhes</a>
+              <a class="card-link" [matMenuTriggerFor]="descontosMenu" (click)="loadDetails()">Ver detalhes</a>
             </div>
           </mat-card-content>
         </mat-card>
+
+        <mat-menu #descontosMenu="matMenu" class="details-menu">
+          <div class="details-panel" (click)="$event.stopPropagation()">
+            <h4>Descontos no Contracheque</h4>
+            @if (details()?.descontos?.length) {
+              @for (item of details()!.descontos; track item.description) {
+                <div class="detail-row">
+                  <span>{{ item.description }}</span>
+                  <span class="detail-value">{{ toNum(item.amount) | currencyBrl }}</span>
+                </div>
+              }
+            } @else {
+              <p class="detail-empty">Nenhum desconto</p>
+            }
+          </div>
+        </mat-menu>
 
         <mat-card class="summary-card despesas">
           <mat-card-content>
@@ -121,7 +140,36 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
             <div class="card-info">
               <span class="card-label">Total Despesas</span>
               <span class="card-value">{{ toNum(summary()?.total_despesas) | currencyBrl }}</span>
-              <span class="card-sub">{{ summary()?.quantidade_despesas || 0 }} lançamentos</span>
+              <a class="card-link" [matMenuTriggerFor]="despesasMenu" (click)="loadDetails()">Ver detalhes</a>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-menu #despesasMenu="matMenu" class="details-menu">
+          <div class="details-panel" (click)="$event.stopPropagation()">
+            <h4>Despesas do Mês</h4>
+            @if (details()?.despesas?.length) {
+              @for (item of details()!.despesas; track item.description) {
+                <div class="detail-row">
+                  <span>{{ item.description }}</span>
+                  <span class="detail-value">{{ toNum(item.amount) | currencyBrl }}</span>
+                </div>
+              }
+            } @else {
+              <p class="detail-empty">Nenhuma despesa</p>
+            }
+          </div>
+        </mat-menu>
+
+        <mat-card class="summary-card outras-receitas">
+          <mat-card-content>
+            <div class="card-icon">
+              <mat-icon>add_circle</mat-icon>
+            </div>
+            <div class="card-info">
+              <span class="card-label">Outras Receitas</span>
+              <span class="card-value">{{ toNum(summary()?.total_outras_receitas) | currencyBrl }}</span>
+              <span class="card-sub">{{ summary()?.quantidade_receitas || 0 }} lançamentos</span>
             </div>
           </mat-card-content>
         </mat-card>
@@ -175,10 +223,15 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
         </mat-card>
       }
 
-      @if (!summary()?.has_snapshot) {
+      @if (summary()?.is_predicted) {
         <div class="alert">
           <mat-icon>info</mat-icon>
-          <span>Nenhum contracheque salvo para este mês. Gere um snapshot na tela de Contracheque para ver o saldo real.</span>
+          <span>Valores previstos com base na configuração do contracheque e despesas recorrentes.</span>
+        </div>
+      } @else if (!summary()?.has_snapshot) {
+        <div class="alert">
+          <mat-icon>info</mat-icon>
+          <span>Nenhum contracheque salvo para este mês.</span>
         </div>
       }
 
@@ -231,14 +284,29 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 
         <mat-card class="chart-card">
           <mat-card-header>
-            <mat-card-title>Despesas por Banco</mat-card-title>
+            <mat-card-title>Despesas por Cartão</mat-card-title>
           </mat-card-header>
           <mat-card-content>
-            @if (bankData().length > 0) {
-              <div echarts [options]="bankChartOptions()" class="chart"></div>
+            @if (creditCardData().length > 0) {
+              <div echarts [options]="creditCardChartOptions()" class="chart"></div>
             } @else {
               <div class="empty-chart">
-                <p>Sem despesas neste mês</p>
+                <p>Sem despesas no cartão neste mês</p>
+              </div>
+            }
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="chart-card">
+          <mat-card-header>
+            <mat-card-title>Despesas por Pessoa</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            @if (thirdPartyData().length > 0) {
+              <div echarts [options]="thirdPartyChartOptions()" class="chart"></div>
+            } @else {
+              <div class="empty-chart">
+                <p>Sem despesas com terceiros neste mês</p>
               </div>
             }
           </mat-card-content>
@@ -334,6 +402,10 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
       background: #fff3e0;
       color: #e65100;
     }
+    .outras-receitas .card-icon {
+      background: #e0f2f1;
+      color: #00695c;
+    }
     .card-info {
       display: flex;
       flex-direction: column;
@@ -378,7 +450,7 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 
     .charts-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
       gap: 16px;
       margin-bottom: 16px;
     }
@@ -479,6 +551,41 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
       justify-content: center;
       padding: 48px;
     }
+    .details-panel {
+      padding: 12px 16px;
+      min-width: 280px;
+      max-width: 400px;
+    }
+    .details-panel h4 {
+      margin: 0 0 12px;
+      font-size: 0.9rem;
+      color: var(--mat-sys-on-surface-variant);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--mat-sys-outline-variant);
+      font-size: 0.875rem;
+    }
+    .detail-row:last-of-type {
+      border-bottom: none;
+    }
+    .detail-value {
+      font-family: 'Roboto Mono', monospace;
+      font-weight: 500;
+      white-space: nowrap;
+      margin-left: 16px;
+    }
+    .detail-empty {
+      font-size: 0.875rem;
+      color: var(--mat-sys-on-surface-variant);
+      text-align: center;
+      padding: 8px 0;
+    }
   `,
 })
 export class DashboardPage implements OnInit {
@@ -496,14 +603,17 @@ export class DashboardPage implements OnInit {
 
   summary = signal<MonthlySummary | null>(null);
   categoryData = signal<CategoryBreakdown[]>([]);
-  bankData = signal<BankBreakdown[]>([]);
+  creditCardData = signal<CreditCardBreakdown[]>([]);
+  thirdPartyData = signal<ThirdPartyBreakdown[]>([]);
   evolutionData = signal<MonthlyEvolution[]>([]);
 
   categoryChartOptions = signal<EChartsOption>({});
-  bankChartOptions = signal<EChartsOption>({});
+  creditCardChartOptions = signal<EChartsOption>({});
+  thirdPartyChartOptions = signal<EChartsOption>({});
   evolutionChartOptions = signal<EChartsOption>({});
   goalAlerts = signal<Goal[]>([]);
   boletoAlerts = signal<BoletoAlert[]>([]);
+  details = signal<ExpenseDetails | null>(null);
 
   ngOnInit(): void {
     // Buscar mês financeiro corrente antes de carregar dados
@@ -529,7 +639,7 @@ export class DashboardPage implements OnInit {
     let loaded = 0;
     const checkDone = () => {
       loaded++;
-      if (loaded >= 6) this.loading.set(false);
+      if (loaded >= 7) this.loading.set(false);
     };
 
     // Alertas de boletos (vencendo hoje e vencidos)
@@ -563,10 +673,19 @@ export class DashboardPage implements OnInit {
       error: () => checkDone(),
     });
 
-    this.dashboardService.getByBank(month).subscribe({
+    this.dashboardService.getByCreditCard(month).subscribe({
       next: (data) => {
-        this.bankData.set(data);
-        this.buildBankChart(data);
+        this.creditCardData.set(data);
+        this.buildCreditCardChart(data);
+        checkDone();
+      },
+      error: () => checkDone(),
+    });
+
+    this.dashboardService.getByThirdParty(month).subscribe({
+      next: (data) => {
+        this.thirdPartyData.set(data);
+        this.buildThirdPartyChart(data);
         checkDone();
       },
       error: () => checkDone(),
@@ -579,6 +698,12 @@ export class DashboardPage implements OnInit {
         checkDone();
       },
       error: () => checkDone(),
+    });
+  }
+
+  loadDetails(): void {
+    this.dashboardService.getExpenseDetails(this.currentMonth()).subscribe({
+      next: (data) => this.details.set(data),
     });
   }
 
@@ -632,8 +757,9 @@ export class DashboardPage implements OnInit {
     });
   }
 
-  private buildBankChart(data: BankBreakdown[]): void {
-    this.bankChartOptions.set({
+  private buildCreditCardChart(data: CreditCardBreakdown[]): void {
+    const colors = ['#1565c0', '#ef5350', '#43a047', '#ff9800', '#8e24aa', '#00acc1'];
+    this.creditCardChartOptions.set({
       tooltip: {
         trigger: 'item',
         formatter: (params: any) =>
@@ -646,10 +772,35 @@ export class DashboardPage implements OnInit {
           avoidLabelOverlap: true,
           itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
           label: { show: true, formatter: '{b}' },
-          data: data.map((d) => ({
-            name: d.bank_name,
+          data: data.map((d, i) => ({
+            name: d.credit_card_name,
             value: parseFloat(d.total),
-            itemStyle: { color: d.bank_color },
+            itemStyle: { color: colors[i % colors.length] },
+          })),
+        },
+      ],
+    });
+  }
+
+  private buildThirdPartyChart(data: ThirdPartyBreakdown[]): void {
+    const colors = ['#6a1b9a', '#00695c', '#d84315', '#1565c0', '#ad1457', '#f9a825'];
+    this.thirdPartyChartOptions.set({
+      tooltip: {
+        trigger: 'item',
+        formatter: (params: any) =>
+          `${params.name}: ${this.currencyPipe.transform(params.value)} (${params.percent}%)`,
+      },
+      series: [
+        {
+          type: 'pie',
+          radius: ['40%', '70%'],
+          avoidLabelOverlap: true,
+          itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+          label: { show: true, formatter: '{b}' },
+          data: data.map((d, i) => ({
+            name: d.third_party_name,
+            value: parseFloat(d.total),
+            itemStyle: { color: colors[i % colors.length] },
           })),
         },
       ],

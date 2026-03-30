@@ -13,6 +13,7 @@ import { provideNativeDateAdapter } from '@angular/material/core';
 import { format } from 'date-fns';
 
 import { ReportService } from '../../../../core/services/report.service';
+import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
 import {
   ReportSummary,
   ReportByCategory,
@@ -162,8 +163,8 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
                     @if (group.category_name) {
                       <span>{{ group.category_name }}</span>
                     }
-                    @if (group.bank_name) {
-                      <span>{{ group.bank_name }}</span>
+                    @if (group.credit_card_name) {
+                      <span>{{ group.credit_card_name }}</span>
                     }
                     <span>{{ group.remaining }} parcelas restantes de {{ group.installment_total }}</span>
                     <span class="inst-total">Total: {{ toNum(group.total_remaining) | currencyBrl }}</span>
@@ -213,6 +214,7 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 })
 export class ReportsPage implements OnInit {
   private readonly reportService = inject(ReportService);
+  private readonly financialCalendarService = inject(FinancialCalendarService);
 
   loadingComparison = signal(true);
   loadingCategory = signal(false);
@@ -230,6 +232,18 @@ export class ReportsPage implements OnInit {
 
   ngOnInit(): void {
     this.loadComparison();
+
+    this.financialCalendarService.getCurrentFinancialMonth().subscribe({
+      next: (fm) => {
+        this.financialCalendarService.getFinancialMonths(fm.year).subscribe((months) => {
+          const current = months.find((m) => m.month === fm.month);
+          if (current) {
+            this.startDate = new Date(current.start + 'T00:00:00');
+            this.endDate = new Date(current.end + 'T00:00:00');
+          }
+        });
+      },
+    });
   }
 
   onTabChange(index: number): void {

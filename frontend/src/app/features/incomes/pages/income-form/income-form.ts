@@ -17,8 +17,7 @@ import { NgxMaskDirective } from 'ngx-mask';
 import { format } from 'date-fns';
 
 import { IncomeService } from '../../../../core/services/income.service';
-import { BankService } from '../../../../core/services/bank.service';
-import { IncomeCategory, Bank, IncomeCreate } from '../../../../core/models';
+import { IncomeCategory, IncomeCreate } from '../../../../core/models';
 
 @Component({
   selector: 'app-income-form',
@@ -65,27 +64,15 @@ import { IncomeCategory, Bank, IncomeCreate } from '../../../../core/models';
           </mat-form-field>
         </div>
 
-        <div class="row">
-          <mat-form-field appearance="outline" class="half-width">
-            <mat-label>Categoria</mat-label>
-            <mat-select formControlName="category">
-              <mat-option [value]="null">Nenhuma</mat-option>
-              @for (cat of categories(); track cat.id) {
-                <mat-option [value]="cat.id">{{ cat.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-
-          <mat-form-field appearance="outline" class="half-width">
-            <mat-label>Banco</mat-label>
-            <mat-select formControlName="bank">
-              <mat-option [value]="null">Nenhum</mat-option>
-              @for (bank of banks(); track bank.id) {
-                <mat-option [value]="bank.id">{{ bank.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-        </div>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Categoria</mat-label>
+          <mat-select formControlName="category">
+            <mat-option [value]="null">Nenhuma</mat-option>
+            @for (cat of categories(); track cat.id) {
+              <mat-option [value]="cat.id">{{ cat.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
 
         <div class="toggles">
           <mat-slide-toggle formControlName="is_recurring">Recorrente</mat-slide-toggle>
@@ -122,11 +109,9 @@ export class IncomeForm implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly incomeService = inject(IncomeService);
-  private readonly bankService = inject(BankService);
   private readonly snackBar = inject(MatSnackBar);
 
   categories = signal<IncomeCategory[]>([]);
-  banks = signal<Bank[]>([]);
   isEditing = signal(false);
   loadingData = signal(true);
   saving = signal(false);
@@ -137,14 +122,12 @@ export class IncomeForm implements OnInit {
     amount: ['', Validators.required],
     date: [new Date(), Validators.required],
     category: [null],
-    bank: [null],
     is_recurring: [false],
     notes: [''],
   });
 
   ngOnInit(): void {
     this.incomeService.listCategories().subscribe((cats) => this.categories.set(cats));
-    this.bankService.list().subscribe((banks) => this.banks.set(banks));
 
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
@@ -157,7 +140,6 @@ export class IncomeForm implements OnInit {
             amount: income.amount,
             date: new Date(income.date + 'T00:00:00'),
             category: income.category,
-            bank: income.bank,
             is_recurring: income.is_recurring,
             notes: income.notes,
           });
@@ -191,7 +173,6 @@ export class IncomeForm implements OnInit {
       amount: this.parseAmount(val.amount),
       date: format(val.date, 'yyyy-MM-dd'),
       category: val.category || null,
-      bank: val.bank || null,
       is_recurring: val.is_recurring || false,
       notes: val.notes || '',
     };

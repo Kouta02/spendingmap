@@ -22,10 +22,10 @@ import { format } from 'date-fns';
 
 import { ExpenseService } from '../../../../core/services/expense.service';
 import { CategoryService } from '../../../../core/services/category.service';
-import { BankService } from '../../../../core/services/bank.service';
 import { PaymentTypeService } from '../../../../core/services/payment-type.service';
 import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
-import { CategoryFlat, Bank, PaymentType, CreditCard, ExpenseCreate } from '../../../../core/models';
+import { ThirdPartyService } from '../../../../core/services/third-party.service';
+import { CategoryFlat, PaymentType, CreditCard, ThirdParty, ExpenseCreate } from '../../../../core/models';
 
 @Component({
   selector: 'app-expense-form',
@@ -57,6 +57,7 @@ import { CategoryFlat, Bank, PaymentType, CreditCard, ExpenseCreate } from '../.
       </div>
     } @else {
       <form [formGroup]="form" (ngSubmit)="onSubmit()" class="expense-form">
+        <!-- 1ª linha: Descrição -->
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Descrição</mat-label>
           <input matInput formControlName="description" />
@@ -65,6 +66,7 @@ import { CategoryFlat, Bank, PaymentType, CreditCard, ExpenseCreate } from '../.
           }
         </mat-form-field>
 
+        <!-- 2ª linha: Valor + Data -->
         <div class="row">
           <mat-form-field appearance="outline" class="half-width">
             <mat-label>Valor (R$)</mat-label>
@@ -92,37 +94,7 @@ import { CategoryFlat, Bank, PaymentType, CreditCard, ExpenseCreate } from '../.
           </mat-form-field>
         </div>
 
-        <div class="row">
-          <mat-form-field appearance="outline" class="half-width">
-            <mat-label>Categoria</mat-label>
-            <mat-select formControlName="category">
-              <mat-option [value]="null">Nenhuma</mat-option>
-              @for (group of categoryGroups(); track group.root.id) {
-                @if (group.children.length > 0) {
-                  <mat-optgroup [label]="group.root.name">
-                    <mat-option [value]="group.root.id">{{ group.root.name }} (geral)</mat-option>
-                    @for (child of group.children; track child.id) {
-                      <mat-option [value]="child.id">{{ child.name }}</mat-option>
-                    }
-                  </mat-optgroup>
-                } @else {
-                  <mat-option [value]="group.root.id">{{ group.root.name }}</mat-option>
-                }
-              }
-            </mat-select>
-          </mat-form-field>
-
-          <mat-form-field appearance="outline" class="half-width">
-            <mat-label>Banco</mat-label>
-            <mat-select formControlName="bank">
-              <mat-option [value]="null">Nenhum</mat-option>
-              @for (bank of banks(); track bank.id) {
-                <mat-option [value]="bank.id">{{ bank.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-        </div>
-
+        <!-- 3ª linha: Tipo de Pagamento -->
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Tipo de Pagamento</mat-label>
           <mat-select formControlName="payment_type" (selectionChange)="onPaymentTypeChange()">
@@ -133,9 +105,10 @@ import { CategoryFlat, Bank, PaymentType, CreditCard, ExpenseCreate } from '../.
           </mat-select>
         </mat-form-field>
 
+        <!-- Cartão de crédito (condicional) -->
         @if (showCreditCardField()) {
           <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Cartao de Credito</mat-label>
+            <mat-label>Cartão de Crédito</mat-label>
             <mat-select formControlName="credit_card">
               <mat-option [value]="null">Nenhum</mat-option>
               @for (card of creditCards(); track card.id) {
@@ -145,70 +118,111 @@ import { CategoryFlat, Bank, PaymentType, CreditCard, ExpenseCreate } from '../.
           </mat-form-field>
         }
 
-        @if (!isEditing()) {
-          <div class="toggles">
-            <mat-slide-toggle
-              formControlName="is_installment"
-              (change)="onInstallmentToggle()"
-            >
-              Parcelado
-            </mat-slide-toggle>
+        <!-- 4ª linha: Toggles (Parcelado, Recorrente, Terceiros) -->
+        <div class="toggles">
+          <mat-slide-toggle
+            formControlName="is_installment"
+            (change)="onInstallmentToggle()"
+          >
+            Parcelado
+          </mat-slide-toggle>
 
-            <mat-slide-toggle
-              formControlName="is_recurring"
-              (change)="onRecurringToggle()"
-            >
-              Recorrente
-            </mat-slide-toggle>
-          </div>
+          <mat-slide-toggle
+            formControlName="is_recurring"
+            (change)="onRecurringToggle()"
+          >
+            Recorrente
+          </mat-slide-toggle>
 
-          @if (form.get('is_installment')?.value) {
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Número de parcelas</mat-label>
-              <input
-                matInput
-                type="number"
-                formControlName="installment_total"
-                min="2"
-                max="72"
-              />
-              @if (form.get('installment_total')?.hasError('required')) {
-                <mat-error>Informe o número de parcelas</mat-error>
-              }
-              @if (form.get('installment_total')?.hasError('min')) {
-                <mat-error>Mínimo 2 parcelas</mat-error>
-              }
-            </mat-form-field>
-            <p class="info-text">
-              <mat-icon inline>info</mat-icon>
-              Serão criadas {{ form.get('installment_total')?.value || 0 }} parcelas
-              a partir da data selecionada.
-            </p>
-          }
+          <mat-slide-toggle
+            formControlName="has_third_party"
+            (change)="onThirdPartyToggle()"
+          >
+            Terceiros
+          </mat-slide-toggle>
+        </div>
 
-          @if (form.get('is_recurring')?.value) {
-            <p class="info-text">
-              <mat-icon inline>info</mat-icon>
-              Esta despesa será gerada mensalmente de forma automática.
-            </p>
-          }
-
-          @if (showDueDayField()) {
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Dia de vencimento do boleto</mat-label>
-              <input
-                matInput
-                type="number"
-                formControlName="due_day"
-                min="1"
-                max="31"
-                placeholder="Ex: 15"
-              />
-              <mat-hint>Dia do mês em que o boleto vence (1 a 31)</mat-hint>
-            </mat-form-field>
-          }
+        <!-- Número de parcelas (condicional) -->
+        @if (form.get('is_installment')?.value) {
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Número de parcelas</mat-label>
+            <input
+              matInput
+              type="number"
+              formControlName="installment_total"
+              min="2"
+              max="72"
+            />
+            @if (form.get('installment_total')?.hasError('required')) {
+              <mat-error>Informe o número de parcelas</mat-error>
+            }
+            @if (form.get('installment_total')?.hasError('min')) {
+              <mat-error>Mínimo 2 parcelas</mat-error>
+            }
+          </mat-form-field>
+          <p class="info-text">
+            <mat-icon inline>info</mat-icon>
+            Serão criadas {{ form.get('installment_total')?.value || 0 }} parcelas
+            a partir da data selecionada.
+          </p>
         }
 
+        <!-- Dropdown de terceiros (condicional) -->
+        @if (form.get('has_third_party')?.value) {
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Pessoa</mat-label>
+            <mat-select formControlName="third_party">
+              <mat-option [value]="null">Nenhum</mat-option>
+              @for (tp of thirdParties(); track tp.id) {
+                <mat-option [value]="tp.id">{{ tp.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        }
+
+        @if (form.get('is_recurring')?.value) {
+          <p class="info-text">
+            <mat-icon inline>info</mat-icon>
+            Esta despesa será gerada mensalmente de forma automática.
+          </p>
+        }
+
+        @if (showDueDayField()) {
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Dia de vencimento do boleto</mat-label>
+            <input
+              matInput
+              type="number"
+              formControlName="due_day"
+              min="1"
+              max="31"
+              placeholder="Ex: 15"
+            />
+            <mat-hint>Dia do mês em que o boleto vence (1 a 31)</mat-hint>
+          </mat-form-field>
+        }
+
+        <!-- 5ª linha: Categoria -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Categoria</mat-label>
+          <mat-select formControlName="category">
+            <mat-option [value]="null">Nenhuma</mat-option>
+            @for (group of categoryGroups(); track group.root.id) {
+              @if (group.children.length > 0) {
+                <mat-optgroup [label]="group.root.name">
+                  <mat-option [value]="group.root.id">{{ group.root.name }} (geral)</mat-option>
+                  @for (child of group.children; track child.id) {
+                    <mat-option [value]="child.id">{{ child.name }}</mat-option>
+                  }
+                </mat-optgroup>
+              } @else {
+                <mat-option [value]="group.root.id">{{ group.root.name }}</mat-option>
+              }
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <!-- 6ª linha: Observações -->
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Observações</mat-label>
           <textarea matInput formControlName="notes" rows="3"></textarea>
@@ -286,15 +300,15 @@ export class ExpenseForm implements OnInit {
   private readonly router = inject(Router);
   private readonly expenseService = inject(ExpenseService);
   private readonly categoryService = inject(CategoryService);
-  private readonly bankService = inject(BankService);
   private readonly paymentTypeService = inject(PaymentTypeService);
   private readonly financialCalendarService = inject(FinancialCalendarService);
+  private readonly thirdPartyService = inject(ThirdPartyService);
   private readonly snackBar = inject(MatSnackBar);
 
   categories = signal<CategoryFlat[]>([]);
-  banks = signal<Bank[]>([]);
   paymentTypes = signal<PaymentType[]>([]);
   creditCards = signal<CreditCard[]>([]);
+  thirdParties = signal<ThirdParty[]>([]);
   showCreditCardField = signal(false);
   showDueDayField = signal(false);
 
@@ -311,27 +325,32 @@ export class ExpenseForm implements OnInit {
   saving = signal(false);
 
   private expenseId = '';
+  private originalBoletoStatus: string | null = null;
 
   form: FormGroup = this.fb.group({
     description: ['', Validators.required],
     amount: ['', Validators.required],
     date: [new Date(), Validators.required],
-    category: [null],
-    bank: [null],
     payment_type: [null],
     credit_card: [null],
     is_installment: [false],
     installment_total: [null],
     is_recurring: [false],
+    has_third_party: [false],
+    third_party: [null],
     due_day: [null],
+    category: [null],
     notes: [''],
   });
 
   ngOnInit(): void {
     this.categoryService.flat().subscribe((cats) => this.categories.set(cats));
-    this.bankService.list().subscribe((banks) => this.banks.set(banks));
-    this.paymentTypeService.list().subscribe((pts) => this.paymentTypes.set(pts));
+    this.paymentTypeService.list().subscribe((pts) => {
+      this.paymentTypes.set(pts);
+      this.updateDueDayVisibility();
+    });
     this.financialCalendarService.listCreditCards().subscribe((cards) => this.creditCards.set(cards));
+    this.thirdPartyService.list().subscribe((tps) => this.thirdParties.set(tps));
 
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
@@ -343,22 +362,22 @@ export class ExpenseForm implements OnInit {
             description: expense.description,
             amount: expense.amount,
             date: new Date(expense.date + 'T00:00:00'),
-            category: expense.category,
-            bank: expense.bank,
             payment_type: expense.payment_type,
             credit_card: expense.credit_card,
             is_installment: expense.is_installment,
             installment_total: expense.installment_total,
             is_recurring: expense.is_recurring,
+            has_third_party: !!expense.third_party,
+            third_party: expense.third_party,
             due_day: expense.due_day,
+            category: expense.category,
             notes: expense.notes,
           });
+          this.originalBoletoStatus = expense.boleto_status;
           if (expense.credit_card) {
             this.showCreditCardField.set(true);
           }
-          if (expense.due_day) {
-            this.showDueDayField.set(true);
-          }
+          this.updateDueDayVisibility();
           this.loadingData.set(false);
         },
         error: () => {
@@ -376,7 +395,7 @@ export class ExpenseForm implements OnInit {
   onPaymentTypeChange(): void {
     const ptId = this.form.get('payment_type')?.value;
     const pt = this.paymentTypes().find((p) => p.id === ptId);
-    const isCredit = pt?.name?.toLowerCase().includes('cr\u00e9dito') ||
+    const isCredit = pt?.name?.toLowerCase().includes('crédito') ||
                      pt?.name?.toLowerCase().includes('credito');
     this.showCreditCardField.set(!!isCredit);
     if (!isCredit) {
@@ -408,6 +427,12 @@ export class ExpenseForm implements OnInit {
     this.updateDueDayVisibility();
   }
 
+  onThirdPartyToggle(): void {
+    if (!this.form.get('has_third_party')?.value) {
+      this.form.get('third_party')?.setValue(null);
+    }
+  }
+
   private updateDueDayVisibility(): void {
     const ptId = this.form.get('payment_type')?.value;
     const pt = this.paymentTypes().find((p) => p.id === ptId);
@@ -422,11 +447,9 @@ export class ExpenseForm implements OnInit {
   private parseAmount(value: unknown): number {
     if (typeof value === 'number') return value;
     const str = String(value);
-    // Se contém vírgula, é formato pt-BR (1.234,56) → remover pontos, trocar vírgula
     if (str.includes(',')) {
       return parseFloat(str.replace(/\./g, '').replace(',', '.'));
     }
-    // Senão, é formato numérico padrão (1234.56)
     return parseFloat(str);
   }
 
@@ -440,14 +463,14 @@ export class ExpenseForm implements OnInit {
       amount: this.parseAmount(val.amount),
       date: format(val.date, 'yyyy-MM-dd'),
       category: val.category || null,
-      bank: val.bank || null,
       payment_type: val.payment_type,
       credit_card: val.credit_card || null,
+      third_party: val.has_third_party ? (val.third_party || null) : null,
       is_installment: val.is_installment || false,
       installment_total: val.is_installment ? val.installment_total : null,
       is_recurring: val.is_recurring || false,
       due_day: val.due_day || null,
-      boleto_status: val.due_day ? 'pending' : null,
+      boleto_status: this.isEditing() ? this.originalBoletoStatus : (val.due_day ? 'pending' : null),
       notes: val.notes || '',
     };
 

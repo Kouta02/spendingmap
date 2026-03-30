@@ -23,6 +23,7 @@ import { format, subMonths, addMonths, parse } from 'date-fns';
 
 import { GoalService } from '../../../../core/services/goal.service';
 import { CategoryService } from '../../../../core/services/category.service';
+import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
 import { Goal, GoalCreate, CategoryFlat } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 import {
@@ -237,6 +238,7 @@ import {
 export class GoalList implements OnInit {
   private readonly goalService = inject(GoalService);
   private readonly categoryService = inject(CategoryService);
+  private readonly financialCalendarService = inject(FinancialCalendarService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly fb = inject(FormBuilder);
@@ -258,9 +260,19 @@ export class GoalList implements OnInit {
   });
 
   ngOnInit(): void {
-    this.updateMonthLabel();
     this.categoryService.flat().subscribe((cats) => this.categories.set(cats));
-    this.loadGoals();
+
+    this.financialCalendarService.getCurrentFinancialMonth().subscribe({
+      next: (fm) => {
+        this.currentMonth.set(format(new Date(fm.year, fm.month - 1, 1), 'yyyy-MM'));
+        this.updateMonthLabel();
+        this.loadGoals();
+      },
+      error: () => {
+        this.updateMonthLabel();
+        this.loadGoals();
+      },
+    });
   }
 
   loadGoals(): void {

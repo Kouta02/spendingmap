@@ -161,10 +161,6 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
                     <ng-container><mat-icon>calculate</mat-icon> Calcular</ng-container>
                   }
                 </button>
-                <button mat-button (click)="onSaveConfig()" [disabled]="savingConfig()">
-                  <mat-icon>save</mat-icon>
-                  Salvar Config
-                </button>
               </div>
             </form>
           </mat-card-content>
@@ -272,11 +268,11 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
               </table>
 
               <div class="snapshot-actions">
-                <button mat-flat-button (click)="onGenerateSnapshot()" [disabled]="generatingSnapshot()">
-                  @if (generatingSnapshot()) {
+                <button mat-flat-button (click)="onSaveConfig()" [disabled]="savingConfig()">
+                  @if (savingConfig()) {
                     <mat-spinner diameter="20" />
                   } @else {
-                    <ng-container><mat-icon>save_alt</mat-icon> Salvar como Snapshot</ng-container>
+                    <ng-container><mat-icon>save</mat-icon> Salvar Configuração</ng-container>
                   }
                 </button>
               </div>
@@ -390,7 +386,6 @@ export class SalaryConfigPage implements OnInit {
   loading = signal(true);
   calculating = signal(false);
   savingConfig = signal(false);
-  generatingSnapshot = signal(false);
   result = signal<SalaryResult | null>(null);
 
   private configId = '';
@@ -496,26 +491,4 @@ export class SalaryConfigPage implements OnInit {
     });
   }
 
-  onGenerateSnapshot(): void {
-    this.generatingSnapshot.set(true);
-    const year = this.form.get('year')?.value;
-    const now = new Date();
-    const month =
-      year === now.getFullYear()
-        ? `${year}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-        : `${year}-01-01`;
-
-    this.salaryService.generateSnapshot(month).subscribe({
-      next: () => {
-        this.generatingSnapshot.set(false);
-        this.snackBar.open('Snapshot salvo!', 'OK', { duration: 3000 });
-      },
-      error: () => {
-        this.generatingSnapshot.set(false);
-        this.snackBar.open('Erro ao salvar snapshot.', 'OK', {
-          duration: 3000,
-        });
-      },
-    });
-  }
 }

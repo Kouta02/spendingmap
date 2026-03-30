@@ -4,117 +4,163 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatRadioModule } from '@angular/material/radio';
+import { FormsModule } from '@angular/forms';
 import { MatDialog } from '@angular/material/dialog';
 
 import { CategoryService } from '../../../../core/services/category.service';
-import { Category } from '../../../../core/models';
+import { IncomeService } from '../../../../core/services/income.service';
+import { Category, IncomeCategory } from '../../../../core/models';
 import {
   ConfirmDialog,
   ConfirmDialogData,
 } from '../../../../shared/components/confirm-dialog/confirm-dialog';
+
+type CategoryMode = 'expense' | 'income';
 
 @Component({
   selector: 'app-category-list',
   standalone: true,
   imports: [
     RouterLink,
+    FormsModule,
     MatButtonModule,
     MatIconModule,
     MatTooltipModule,
     MatProgressSpinnerModule,
+    MatRadioModule,
   ],
   template: `
     <div class="page-header">
       <h1>Categorias</h1>
-      <a mat-fab extended routerLink="/settings/categories/new">
+      <a mat-fab extended
+        [routerLink]="['/settings/categories/new']"
+        [queryParams]="{type: selectedType()}">
         <mat-icon>add</mat-icon>
         Nova Categoria
       </a>
+    </div>
+
+    <div class="type-toggle">
+      <mat-radio-group [value]="selectedType()" (change)="onTypeChange($event.value)">
+        <mat-radio-button value="expense">Despesas</mat-radio-button>
+        <mat-radio-button value="income">Receitas</mat-radio-button>
+      </mat-radio-group>
     </div>
 
     @if (loading()) {
       <div class="loading">
         <mat-spinner diameter="40" />
       </div>
-    } @else if (categories().length === 0) {
-      <div class="empty-state">
-        <mat-icon>category</mat-icon>
-        <p>Nenhuma categoria cadastrada.</p>
-        <a mat-flat-button routerLink="/settings/categories/new">Criar categoria</a>
-      </div>
-    } @else {
-      <div class="tree">
-        @for (cat of categories(); track cat.id) {
-          <ng-container>
-            @if (true) {
-              <div class="tree-node depth-0">
+    } @else if (selectedType() === 'expense') {
+      <!-- Categorias de despesa (árvore hierárquica) -->
+      @if (expenseCategories().length === 0) {
+        <div class="empty-state">
+          <mat-icon>category</mat-icon>
+          <p>Nenhuma categoria de despesa cadastrada.</p>
+          <a mat-flat-button routerLink="/settings/categories/new" [queryParams]="{type: 'expense'}">Criar categoria</a>
+        </div>
+      } @else {
+        <div class="tree">
+          @for (cat of expenseCategories(); track cat.id) {
+            <div class="tree-node depth-0">
+              <div class="node-content">
+                <span class="color-dot" [style.background-color]="cat.color || '#ccc'"></span>
+                @if (cat.icon) {
+                  <mat-icon class="cat-icon">{{ cat.icon }}</mat-icon>
+                }
+                <span class="cat-name">{{ cat.name }}</span>
+                <span class="actions">
+                  <a mat-icon-button [routerLink]="['/settings/categories', cat.id, 'edit']" [queryParams]="{type: 'expense'}" matTooltip="Editar" class="small-btn">
+                    <mat-icon>edit</mat-icon>
+                  </a>
+                  <a mat-icon-button [routerLink]="['/settings/categories', 'new']" [queryParams]="{parent: cat.id, type: 'expense'}" matTooltip="Adicionar subcategoria" class="small-btn">
+                    <mat-icon>add</mat-icon>
+                  </a>
+                  <button mat-icon-button (click)="confirmDeleteExpense(cat)" matTooltip="Excluir" color="warn" class="small-btn">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </span>
+              </div>
+            </div>
+            @for (child of cat.children; track child.id) {
+              <div class="tree-node depth-1">
                 <div class="node-content">
-                  <span class="color-dot" [style.background-color]="cat.color || '#ccc'"></span>
-                  @if (cat.icon) {
-                    <mat-icon class="cat-icon">{{ cat.icon }}</mat-icon>
+                  <span class="color-dot" [style.background-color]="child.color || cat.color || '#ccc'"></span>
+                  @if (child.icon) {
+                    <mat-icon class="cat-icon">{{ child.icon }}</mat-icon>
                   }
-                  <span class="cat-name">{{ cat.name }}</span>
+                  <span class="cat-name">{{ child.name }}</span>
                   <span class="actions">
-                    <a mat-icon-button [routerLink]="['/settings/categories', cat.id, 'edit']" matTooltip="Editar" class="small-btn">
+                    <a mat-icon-button [routerLink]="['/settings/categories', child.id, 'edit']" [queryParams]="{type: 'expense'}" matTooltip="Editar" class="small-btn">
                       <mat-icon>edit</mat-icon>
                     </a>
-                    <a mat-icon-button [routerLink]="['/settings/categories', 'new']" [queryParams]="{parent: cat.id}" matTooltip="Adicionar subcategoria" class="small-btn">
+                    <a mat-icon-button [routerLink]="['/settings/categories', 'new']" [queryParams]="{parent: child.id, type: 'expense'}" matTooltip="Adicionar subcategoria" class="small-btn">
                       <mat-icon>add</mat-icon>
                     </a>
-                    <button mat-icon-button (click)="confirmDelete(cat)" matTooltip="Excluir" color="warn" class="small-btn">
+                    <button mat-icon-button (click)="confirmDeleteExpense(child)" matTooltip="Excluir" color="warn" class="small-btn">
                       <mat-icon>delete</mat-icon>
                     </button>
                   </span>
                 </div>
               </div>
-              @for (child of cat.children; track child.id) {
-                <div class="tree-node depth-1">
+              @for (grandchild of child.children; track grandchild.id) {
+                <div class="tree-node depth-2">
                   <div class="node-content">
-                    <span class="color-dot" [style.background-color]="child.color || cat.color || '#ccc'"></span>
-                    @if (child.icon) {
-                      <mat-icon class="cat-icon">{{ child.icon }}</mat-icon>
+                    <span class="color-dot" [style.background-color]="grandchild.color || child.color || cat.color || '#ccc'"></span>
+                    @if (grandchild.icon) {
+                      <mat-icon class="cat-icon">{{ grandchild.icon }}</mat-icon>
                     }
-                    <span class="cat-name">{{ child.name }}</span>
+                    <span class="cat-name">{{ grandchild.name }}</span>
                     <span class="actions">
-                      <a mat-icon-button [routerLink]="['/settings/categories', child.id, 'edit']" matTooltip="Editar" class="small-btn">
+                      <a mat-icon-button [routerLink]="['/settings/categories', grandchild.id, 'edit']" [queryParams]="{type: 'expense'}" matTooltip="Editar" class="small-btn">
                         <mat-icon>edit</mat-icon>
                       </a>
-                      <a mat-icon-button [routerLink]="['/settings/categories', 'new']" [queryParams]="{parent: child.id}" matTooltip="Adicionar subcategoria" class="small-btn">
+                      <a mat-icon-button [routerLink]="['/settings/categories', 'new']" [queryParams]="{parent: grandchild.id, type: 'expense'}" matTooltip="Adicionar subcategoria" class="small-btn">
                         <mat-icon>add</mat-icon>
                       </a>
-                      <button mat-icon-button (click)="confirmDelete(child)" matTooltip="Excluir" color="warn" class="small-btn">
+                      <button mat-icon-button (click)="confirmDeleteExpense(grandchild)" matTooltip="Excluir" color="warn" class="small-btn">
                         <mat-icon>delete</mat-icon>
                       </button>
                     </span>
                   </div>
                 </div>
-                @for (grandchild of child.children; track grandchild.id) {
-                  <div class="tree-node depth-2">
-                    <div class="node-content">
-                      <span class="color-dot" [style.background-color]="grandchild.color || child.color || cat.color || '#ccc'"></span>
-                      @if (grandchild.icon) {
-                        <mat-icon class="cat-icon">{{ grandchild.icon }}</mat-icon>
-                      }
-                      <span class="cat-name">{{ grandchild.name }}</span>
-                      <span class="actions">
-                        <a mat-icon-button [routerLink]="['/settings/categories', grandchild.id, 'edit']" matTooltip="Editar" class="small-btn">
-                          <mat-icon>edit</mat-icon>
-                        </a>
-                        <a mat-icon-button [routerLink]="['/settings/categories', 'new']" [queryParams]="{parent: grandchild.id}" matTooltip="Adicionar subcategoria" class="small-btn">
-                          <mat-icon>add</mat-icon>
-                        </a>
-                        <button mat-icon-button (click)="confirmDelete(grandchild)" matTooltip="Excluir" color="warn" class="small-btn">
-                          <mat-icon>delete</mat-icon>
-                        </button>
-                      </span>
-                    </div>
-                  </div>
-                }
               }
             }
-          </ng-container>
-        }
-      </div>
+          }
+        </div>
+      }
+    } @else {
+      <!-- Categorias de receita (lista plana) -->
+      @if (incomeCategories().length === 0) {
+        <div class="empty-state">
+          <mat-icon>category</mat-icon>
+          <p>Nenhuma categoria de receita cadastrada.</p>
+          <a mat-flat-button routerLink="/settings/categories/new" [queryParams]="{type: 'income'}">Criar categoria</a>
+        </div>
+      } @else {
+        <div class="tree">
+          @for (cat of incomeCategories(); track cat.id) {
+            <div class="tree-node depth-0">
+              <div class="node-content">
+                <span class="color-dot" [style.background-color]="cat.color || '#ccc'"></span>
+                @if (cat.icon) {
+                  <mat-icon class="cat-icon">{{ cat.icon }}</mat-icon>
+                }
+                <span class="cat-name">{{ cat.name }}</span>
+                <span class="actions">
+                  <a mat-icon-button [routerLink]="['/settings/categories', cat.id, 'edit']" [queryParams]="{type: 'income'}" matTooltip="Editar" class="small-btn">
+                    <mat-icon>edit</mat-icon>
+                  </a>
+                  <button mat-icon-button (click)="confirmDeleteIncome(cat)" matTooltip="Excluir" color="warn" class="small-btn">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </span>
+              </div>
+            </div>
+          }
+        </div>
+      }
     }
   `,
   styles: `
@@ -185,31 +231,55 @@ import {
       width: 48px;
       height: 48px;
     }
+    .type-toggle {
+      margin-bottom: 20px;
+    }
+    .type-toggle mat-radio-button {
+      margin-right: 16px;
+    }
   `,
 })
 export class CategoryList implements OnInit {
   private readonly categoryService = inject(CategoryService);
+  private readonly incomeService = inject(IncomeService);
   private readonly dialog = inject(MatDialog);
 
-  categories = signal<Category[]>([]);
+  expenseCategories = signal<Category[]>([]);
+  incomeCategories = signal<IncomeCategory[]>([]);
   loading = signal(true);
+  selectedType = signal<CategoryMode>('expense');
 
   ngOnInit(): void {
     this.loadCategories();
   }
 
-  loadCategories(): void {
-    this.loading.set(true);
-    this.categoryService.tree().subscribe({
-      next: (cats) => {
-        this.categories.set(cats);
-        this.loading.set(false);
-      },
-      error: () => this.loading.set(false),
-    });
+  onTypeChange(type: CategoryMode): void {
+    this.selectedType.set(type);
+    this.loadCategories();
   }
 
-  confirmDelete(category: Category): void {
+  loadCategories(): void {
+    this.loading.set(true);
+    if (this.selectedType() === 'expense') {
+      this.categoryService.tree().subscribe({
+        next: (cats) => {
+          this.expenseCategories.set(cats);
+          this.loading.set(false);
+        },
+        error: () => this.loading.set(false),
+      });
+    } else {
+      this.incomeService.listCategories().subscribe({
+        next: (cats) => {
+          this.incomeCategories.set(cats);
+          this.loading.set(false);
+        },
+        error: () => this.loading.set(false),
+      });
+    }
+  }
+
+  confirmDeleteExpense(category: Category): void {
     const hasChildren = category.children && category.children.length > 0;
     const message = hasChildren
       ? `Deseja excluir "${category.name}" e todas as suas subcategorias?`
@@ -226,6 +296,24 @@ export class CategoryList implements OnInit {
     ref.afterClosed().subscribe((confirmed) => {
       if (confirmed) {
         this.categoryService.delete(category.id).subscribe(() => {
+          this.loadCategories();
+        });
+      }
+    });
+  }
+
+  confirmDeleteIncome(category: IncomeCategory): void {
+    const ref = this.dialog.open(ConfirmDialog, {
+      data: {
+        title: 'Excluir Categoria',
+        message: `Deseja excluir "${category.name}"?`,
+        confirmText: 'Excluir',
+      } as ConfirmDialogData,
+    });
+
+    ref.afterClosed().subscribe((confirmed) => {
+      if (confirmed) {
+        this.incomeService.deleteCategory(category.id).subscribe(() => {
           this.loadCategories();
         });
       }
