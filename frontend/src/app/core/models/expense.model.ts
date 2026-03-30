@@ -7,8 +7,8 @@ export interface Expense {
   category_name: string | null;
   payment_type: string | null;
   payment_type_name: string | null;
-  bank: string | null;
-  bank_name: string | null;
+  third_party: string | null;
+  third_party_name: string | null;
   credit_card: string | null;
   credit_card_name: string | null;
   financial_month: string | null;
@@ -32,7 +32,7 @@ export interface ExpenseCreate {
   date: string;
   category?: string | null;
   payment_type?: string | null;
-  bank?: string | null;
+  third_party?: string | null;
   credit_card?: string | null;
   is_installment?: boolean;
   installment_total?: number | null;
@@ -45,7 +45,8 @@ export interface ExpenseCreate {
 export interface ExpenseFilters {
   month?: string;
   category?: string;
-  bank?: string;
+  third_party?: string;
+  credit_card?: string;
   payment_type?: string;
   is_installment?: string;
   is_recurring?: string;

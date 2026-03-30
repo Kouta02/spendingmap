@@ -6,8 +6,11 @@ export interface MonthlySummary {
   quantidade_descontos: number;
   total_despesas: string;
   quantidade_despesas: number;
+  total_outras_receitas: string;
+  quantidade_receitas: number;
   saldo_livre: string;
   has_snapshot: boolean;
+  is_predicted?: boolean;
 }
 
 export interface CategoryBreakdown {
@@ -18,10 +21,16 @@ export interface CategoryBreakdown {
   count: number;
 }
 
-export interface BankBreakdown {
-  bank_id: string | null;
-  bank_name: string;
-  bank_color: string;
+export interface CreditCardBreakdown {
+  credit_card_id: string | null;
+  credit_card_name: string;
+  total: string;
+  count: number;
+}
+
+export interface ThirdPartyBreakdown {
+  third_party_id: string | null;
+  third_party_name: string;
   total: string;
   count: number;
 }

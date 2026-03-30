@@ -20,8 +20,8 @@ export interface Income {
   date: string;
   category: string | null;
   category_name: string | null;
-  bank: string | null;
-  bank_name: string | null;
+  third_party: string | null;
+  third_party_name: string | null;
   is_recurring: boolean;
   notes: string;
   created_at: string;
@@ -33,7 +33,7 @@ export interface IncomeCreate {
   amount: number;
   date: string;
   category?: string | null;
-  bank?: string | null;
+  third_party?: string | null;
   is_recurring?: boolean;
   notes?: string;
 }
@@ -41,7 +41,7 @@ export interface IncomeCreate {
 export interface IncomeFilters {
   month?: string;
   category?: string;
-  bank?: string;
+  third_party?: string;
   is_recurring?: string;
   ordering?: string;
 }

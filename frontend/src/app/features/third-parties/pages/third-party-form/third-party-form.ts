@@ -13,10 +13,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
-import { BankService } from '../../../../core/services/bank.service';
+import { ThirdPartyService } from '../../../../core/services/third-party.service';
 
 @Component({
-  selector: 'app-bank-form',
+  selector: 'app-third-party-form',
   standalone: true,
   imports: [
     RouterLink,
@@ -30,7 +30,7 @@ import { BankService } from '../../../../core/services/bank.service';
   ],
   template: `
     <div class="page-header">
-      <h1>{{ isEditing() ? 'Editar Banco' : 'Novo Banco' }}</h1>
+      <h1>{{ isEditing() ? 'Editar Terceiro' : 'Novo Terceiro' }}</h1>
     </div>
 
     <form [formGroup]="form" (ngSubmit)="onSubmit()" class="entity-form">
@@ -42,24 +42,18 @@ import { BankService } from '../../../../core/services/bank.service';
         }
       </mat-form-field>
 
-      <div class="color-field">
-        <label>Cor</label>
-        <div class="color-row">
-          <input
-            type="color"
-            [value]="form.get('color')?.value || '#4caf50'"
-            (input)="onColorChange($event)"
-            class="color-input"
-          />
-          <mat-form-field appearance="outline" class="color-text">
-            <mat-label>Hex</mat-label>
-            <input matInput formControlName="color" placeholder="#4caf50" />
-          </mat-form-field>
-        </div>
-      </div>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Parentesco/Relação</mat-label>
+        <input matInput formControlName="relationship" placeholder="Ex: Mãe, Irmão, Amigo" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Observações</mat-label>
+        <textarea matInput formControlName="notes" rows="3"></textarea>
+      </mat-form-field>
 
       <div class="form-actions">
-        <a mat-button routerLink="/settings/banks">Cancelar</a>
+        <a mat-button routerLink="/settings/third-parties">Cancelar</a>
         <button
           mat-flat-button
           type="submit"
@@ -77,29 +71,6 @@ import { BankService } from '../../../../core/services/bank.service';
   styles: `
     .entity-form { max-width: 500px; }
     .full-width { width: 100%; }
-    .color-field {
-      margin-bottom: 16px;
-    }
-    .color-field label {
-      font-size: 0.875rem;
-      color: var(--mat-sys-on-surface-variant);
-      margin-bottom: 8px;
-      display: block;
-    }
-    .color-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .color-input {
-      width: 48px;
-      height: 48px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      padding: 0;
-    }
-    .color-text { flex: 1; }
     .form-actions {
       display: flex;
       gap: 12px;
@@ -112,45 +83,42 @@ import { BankService } from '../../../../core/services/bank.service';
     }
   `,
 })
-export class BankForm implements OnInit {
+export class ThirdPartyForm implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly bankService = inject(BankService);
+  private readonly thirdPartyService = inject(ThirdPartyService);
   private readonly snackBar = inject(MatSnackBar);
 
   isEditing = signal(false);
   saving = signal(false);
-  private bankId = '';
+  private thirdPartyId = '';
 
   form: FormGroup = this.fb.group({
     name: ['', Validators.required],
-    color: ['#4caf50'],
+    relationship: [''],
+    notes: [''],
   });
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       this.isEditing.set(true);
-      this.bankId = id;
-      this.bankService.get(id).subscribe({
-        next: (bank) => {
+      this.thirdPartyId = id;
+      this.thirdPartyService.get(id).subscribe({
+        next: (tp) => {
           this.form.patchValue({
-            name: bank.name,
-            color: bank.color || '#4caf50',
+            name: tp.name,
+            relationship: tp.relationship,
+            notes: tp.notes,
           });
         },
         error: () => {
-          this.snackBar.open('Banco não encontrado', 'OK', { duration: 3000 });
-          this.router.navigate(['/settings/banks']);
+          this.snackBar.open('Terceiro não encontrado', 'OK', { duration: 3000 });
+          this.router.navigate(['/settings/third-parties']);
         },
       });
     }
-  }
-
-  onColorChange(event: Event): void {
-    const color = (event.target as HTMLInputElement).value;
-    this.form.get('color')?.setValue(color);
   }
 
   onSubmit(): void {
@@ -160,21 +128,21 @@ export class BankForm implements OnInit {
     const data = this.form.value;
 
     const request$ = this.isEditing()
-      ? this.bankService.update(this.bankId, data)
-      : this.bankService.create(data);
+      ? this.thirdPartyService.update(this.thirdPartyId, data)
+      : this.thirdPartyService.create(data);
 
     request$.subscribe({
       next: () => {
         this.snackBar.open(
-          this.isEditing() ? 'Banco atualizado!' : 'Banco criado!',
+          this.isEditing() ? 'Terceiro atualizado!' : 'Terceiro cadastrado!',
           'OK',
           { duration: 3000 }
         );
-        this.router.navigate(['/settings/banks']);
+        this.router.navigate(['/settings/third-parties']);
       },
       error: () => {
         this.saving.set(false);
-        this.snackBar.open('Erro ao salvar banco.', 'OK', { duration: 5000 });
+        this.snackBar.open('Erro ao salvar terceiro.', 'OK', { duration: 5000 });
       },
     });
   }

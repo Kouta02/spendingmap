@@ -93,24 +93,24 @@ export const routes: Routes = [
               ).then((m) => m.CategoryForm),
           },
           {
-            path: 'banks',
+            path: 'third-parties',
             loadComponent: () =>
-              import('./features/banks/pages/bank-list/bank-list').then(
-                (m) => m.BankList
+              import('./features/third-parties/pages/third-party-list/third-party-list').then(
+                (m) => m.ThirdPartyList
               ),
           },
           {
-            path: 'banks/new',
+            path: 'third-parties/new',
             loadComponent: () =>
-              import('./features/banks/pages/bank-form/bank-form').then(
-                (m) => m.BankForm
+              import('./features/third-parties/pages/third-party-form/third-party-form').then(
+                (m) => m.ThirdPartyForm
               ),
           },
           {
-            path: 'banks/:id/edit',
+            path: 'third-parties/:id/edit',
             loadComponent: () =>
-              import('./features/banks/pages/bank-form/bank-form').then(
-                (m) => m.BankForm
+              import('./features/third-parties/pages/third-party-form/third-party-form').then(
+                (m) => m.ThirdPartyForm
               ),
           },
           {

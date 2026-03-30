@@ -57,5 +57,5 @@ export interface BoletoAlert {
   days_until: number;
   alert_level: 'overdue' | 'due_today' | 'due_3_days' | 'due_5_days';
   category_name: string | null;
-  bank_name: string | null;
+  third_party_name: string | null;
 }

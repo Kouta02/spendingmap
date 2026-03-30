@@ -29,7 +29,7 @@ export interface InstallmentGroup {
   description: string;
   amount_per_installment: string;
   category_name: string | null;
-  bank_name: string | null;
+  credit_card_name: string | null;
   installment_total: number;
   remaining: number;
   total_remaining: string;

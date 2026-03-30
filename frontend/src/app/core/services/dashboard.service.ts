@@ -4,7 +4,8 @@ import { Observable } from 'rxjs';
 import {
   MonthlySummary,
   CategoryBreakdown,
-  BankBreakdown,
+  CreditCardBreakdown,
+  ThirdPartyBreakdown,
   MonthlyEvolution,
 } from '../models';
 import { environment } from '../../../environments/environment';
@@ -26,10 +27,16 @@ export class DashboardService {
     return this.http.get<CategoryBreakdown[]>(`${this.baseUrl}/by-category/`, { params });
   }
 
-  getByBank(month?: string): Observable<BankBreakdown[]> {
+  getByCreditCard(month?: string): Observable<CreditCardBreakdown[]> {
     let params = new HttpParams();
     if (month) params = params.set('month', month);
-    return this.http.get<BankBreakdown[]>(`${this.baseUrl}/by-bank/`, { params });
+    return this.http.get<CreditCardBreakdown[]>(`${this.baseUrl}/by-credit-card/`, { params });
+  }
+
+  getByThirdParty(month?: string): Observable<ThirdPartyBreakdown[]> {
+    let params = new HttpParams();
+    if (month) params = params.set('month', month);
+    return this.http.get<ThirdPartyBreakdown[]>(`${this.baseUrl}/by-third-party/`, { params });
   }
 
   getEvolution(months?: number): Observable<MonthlyEvolution[]> {
@@ -37,4 +44,20 @@ export class DashboardService {
     if (months) params = params.set('months', months.toString());
     return this.http.get<MonthlyEvolution[]>(`${this.baseUrl}/evolution/`, { params });
   }
+
+  getExpenseDetails(month?: string): Observable<ExpenseDetails> {
+    let params = new HttpParams();
+    if (month) params = params.set('month', month);
+    return this.http.get<ExpenseDetails>(`${this.baseUrl}/expense-details/`, { params });
+  }
+}
+
+export interface ExpenseDetailItem {
+  description: string;
+  amount: string;
+}
+
+export interface ExpenseDetails {
+  descontos: ExpenseDetailItem[];
+  despesas: ExpenseDetailItem[];
 }
