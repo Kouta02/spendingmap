@@ -1,12 +1,17 @@
 import calendar
-from datetime import date, timedelta
+import uuid
+from datetime import date
+from decimal import Decimal
 
 from rest_framework import status
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from apps.financial_calendar.services import get_financial_month_for_date
+from apps.financial_calendar.services import (
+    get_financial_month_for_date,
+    get_financial_month_range,
+)
 
 from .filters import ExpenseFilter
 from .models import Expense
@@ -15,7 +20,7 @@ from .serializers import ExpenseSerializer
 
 class ExpenseViewSet(ModelViewSet):
     queryset = Expense.objects.select_related(
-        'category', 'bank', 'payment_type', 'credit_card',
+        'category', 'third_party', 'payment_type', 'credit_card',
     ).all()
     serializer_class = ExpenseSerializer
     filterset_class = ExpenseFilter
@@ -36,124 +41,212 @@ class ExpenseViewSet(ModelViewSet):
         except (ValueError, TypeError):
             return response
 
-        today = date.today()
+        # Gerar entradas virtuais para despesas recorrentes sem registro real
+        virtual_entries = self._build_virtual_recurring(target_fm)
+        response.data.extend(virtual_entries)
 
-        # Buscar descrições únicas de recorrentes
-        recurring_descriptions = (
+        # Gerar entradas virtuais para despesas do contracheque
+        virtual_paycheck = self._build_virtual_paycheck(target_fm)
+        response.data.extend(virtual_paycheck)
+
+        # Reordenar por data desc
+        response.data.sort(key=lambda x: x.get('date', ''), reverse=True)
+        return response
+
+    def _build_virtual_recurring(self, target_fm):
+        """
+        Para cada despesa recorrente que não tem registro real no mês alvo,
+        gera uma entrada virtual (is_predicted=True). Nunca cria registros no banco.
+        """
+        virtual = []
+
+        # Descrições únicas de recorrentes
+        descriptions = (
             Expense.objects
             .filter(is_recurring=True)
             .values_list('description', flat=True)
             .distinct()
         )
 
-        for desc in recurring_descriptions:
+        for desc in descriptions:
             # Já existe registro real para este mês financeiro?
-            already_exists = Expense.objects.filter(
+            if Expense.objects.filter(
                 is_recurring=True,
                 description=desc,
                 financial_month=target_fm,
-            ).exists()
-
-            if already_exists:
+            ).exists():
                 continue
 
-            # Buscar a instância mais recente desta recorrente
+            # Buscar a instância mais recente
             latest = (
                 Expense.objects
                 .filter(is_recurring=True, description=desc)
-                .select_related('category', 'bank', 'payment_type', 'credit_card')
-                .order_by('-date')
+                .select_related('category', 'third_party', 'payment_type', 'credit_card')
+                .order_by('-financial_month')
                 .first()
             )
 
             if not latest:
                 continue
 
-            # Só gerar para meses posteriores ao mês original da despesa
-            latest_fm = latest.financial_month or date(latest.date.year, latest.date.month, 1)
+            # Só gerar para meses posteriores ao último registro
+            latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
             if target_fm <= latest_fm:
                 continue
 
-            # Calcular o dia correto
-            max_day = calendar.monthrange(year, month)[1]
-            day = min(latest.date.day, max_day)
-            target_expense_date = date(year, month, day)
-
-            fm = get_financial_month_for_date(target_expense_date)
+            # Calcular data dentro do período financeiro alvo
+            start, end = get_financial_month_range(target_fm.year, target_fm.month)
+            due_day = latest.due_day or latest.date.day
+            max_day = calendar.monthrange(start.year, start.month)[1]
+            target_date = date(start.year, start.month, min(due_day, max_day))
+            if not (start <= target_date <= end):
+                target_date = start
 
             is_boleto = latest.payment_type and latest.payment_type.name.lower() == 'boleto'
 
-            if is_boleto:
-                # Boleto: criar como pendente
-                due_day = latest.due_day or latest.date.day
-                new_expense = Expense.objects.create(
-                    description=latest.description,
-                    amount=latest.amount,
-                    date=target_expense_date,
-                    category=latest.category,
-                    payment_type=latest.payment_type,
-                    bank=latest.bank,
-                    credit_card=latest.credit_card,
-                    financial_month=fm,
-                    is_recurring=True,
-                    from_paycheck=latest.from_paycheck,
-                    due_day=due_day,
-                    boleto_status='pending',
-                    notes=latest.notes,
-                )
-                serializer = ExpenseSerializer(new_expense)
-                response.data.append(serializer.data)
-            elif target_expense_date <= today:
-                # Não-boleto: criar registro real se data já passou
-                new_expense = Expense.objects.create(
-                    description=latest.description,
-                    amount=latest.amount,
-                    date=target_expense_date,
-                    category=latest.category,
-                    payment_type=latest.payment_type,
-                    bank=latest.bank,
-                    credit_card=latest.credit_card,
-                    financial_month=fm,
-                    is_recurring=True,
-                    from_paycheck=latest.from_paycheck,
-                    notes=latest.notes,
-                )
-                serializer = ExpenseSerializer(new_expense)
-                response.data.append(serializer.data)
-            else:
-                # Data ainda não chegou — retornar como previsão (virtual)
-                response.data.append({
-                    'id': f'predicted-{latest.id}-{year}-{month}',
-                    'description': latest.description,
-                    'amount': str(latest.amount),
-                    'date': target_expense_date.isoformat(),
-                    'category': str(latest.category_id) if latest.category_id else None,
-                    'category_name': latest.category.name if latest.category else None,
-                    'payment_type': str(latest.payment_type_id) if latest.payment_type_id else None,
-                    'payment_type_name': latest.payment_type.name if latest.payment_type else None,
-                    'bank': str(latest.bank_id) if latest.bank_id else None,
-                    'bank_name': latest.bank.name if latest.bank else None,
-                    'credit_card': str(latest.credit_card_id) if latest.credit_card_id else None,
-                    'credit_card_name': latest.credit_card.name if latest.credit_card else None,
-                    'financial_month': fm.isoformat() if fm else None,
-                    'is_installment': False,
-                    'installment_current': None,
-                    'installment_total': None,
-                    'installment_group_id': None,
-                    'is_recurring': True,
-                    'from_paycheck': latest.from_paycheck,
-                    'due_day': None,
-                    'boleto_status': None,
-                    'notes': latest.notes,
-                    'is_predicted': True,
-                    'created_at': None,
-                    'updated_at': None,
-                })
+            virtual.append({
+                'id': f'predicted-{latest.id}-{target_fm.year}-{target_fm.month}',
+                'description': latest.description,
+                'amount': str(latest.amount),
+                'date': target_date.isoformat(),
+                'category': str(latest.category_id) if latest.category_id else None,
+                'category_name': latest.category.name if latest.category else None,
+                'payment_type': str(latest.payment_type_id) if latest.payment_type_id else None,
+                'payment_type_name': latest.payment_type.name if latest.payment_type else None,
+                'third_party': str(latest.third_party_id) if latest.third_party_id else None,
+                'third_party_name': latest.third_party.name if latest.third_party else None,
+                'credit_card': str(latest.credit_card_id) if latest.credit_card_id else None,
+                'credit_card_name': latest.credit_card.name if latest.credit_card else None,
+                'financial_month': target_fm.isoformat(),
+                'is_installment': False,
+                'installment_current': None,
+                'installment_total': None,
+                'installment_group_id': None,
+                'is_recurring': True,
+                'from_paycheck': latest.from_paycheck,
+                'due_day': latest.due_day,
+                'boleto_status': 'pending' if is_boleto else None,
+                'notes': latest.notes,
+                'is_predicted': True,
+                'created_at': None,
+                'updated_at': None,
+            })
 
-        # Reordenar por data desc
-        response.data.sort(key=lambda x: x.get('date', ''), reverse=True)
+        return virtual
 
-        return response
+    def _build_virtual_paycheck(self, target_fm):
+        """
+        Gera despesas virtuais do contracheque (PSS, IRPF, Funpresp) para meses
+        que ainda não têm registros reais. Calcula via SalaryEngine + config salva.
+        Exceção: abril/2026 nunca é gerado virtualmente.
+        """
+        from apps.salary.engine import SalaryEngine, SalaryInput
+        from apps.salary.models import SalaryConfig, SalarySnapshot
+
+        EXCEPTION_MONTH = date(2026, 4, 1)
+        if target_fm == EXCEPTION_MONTH:
+            return []
+
+        # Se já existe snapshot real, não gerar virtuais
+        if SalarySnapshot.objects.filter(month=target_fm).exists():
+            return []
+
+        # Só gerar para meses futuros (posteriores ao último snapshot)
+        latest_snapshot = SalarySnapshot.objects.order_by('-month').first()
+        if not latest_snapshot or target_fm <= latest_snapshot.month:
+            return []
+
+        config = SalaryConfig.objects.first()
+        if not config:
+            return []
+
+        # Calcular contracheque
+        inp = SalaryInput(
+            padrao=config.padrao,
+            year=target_fm.year,
+            gdae_perc=config.gdae_perc / 100,
+            has_aeq=config.has_aeq,
+            aeq_perc=config.aeq_perc / 100 if config.has_aeq else Decimal('0'),
+            vpi=config.vpi,
+            has_funpresp=config.has_funpresp,
+            funpresp_perc=config.funpresp_perc / 100,
+            funcao_comissionada=config.funcao_comissionada or None,
+            has_creche=config.has_creche,
+            num_filhos=config.num_filhos,
+            dependentes_ir=config.dependentes_ir,
+            approved_years=config.get_approved_years(),
+        )
+
+        engine = SalaryEngine()
+        result = engine.calculate(inp)
+
+        # Buscar categorias e payment_type do mês mais recente
+        prev_expenses = Expense.objects.filter(
+            from_paycheck=True,
+        ).select_related('category', 'payment_type').order_by('-financial_month')
+
+        cat_map = {}
+        pt_info = {'id': None, 'name': None}
+        for exp in prev_expenses:
+            if exp.description not in cat_map:
+                cat_map[exp.description] = {
+                    'id': str(exp.category_id) if exp.category_id else None,
+                    'name': exp.category.name if exp.category else None,
+                }
+            if pt_info['id'] is None and exp.payment_type:
+                pt_info = {
+                    'id': str(exp.payment_type_id),
+                    'name': exp.payment_type.name,
+                }
+
+        start, _end = get_financial_month_range(target_fm.year, target_fm.month)
+
+        virtual = []
+        descontos = []
+        if result.pss > 0:
+            descontos.append(('PSSS (Lei 12.618/12)', result.pss))
+        if result.irpf > 0:
+            descontos.append(('IRPF', result.irpf))
+        if result.funpresp > 0:
+            descontos.append(('Funpresp - Contrib. Básica', result.funpresp))
+
+        for desc, amount in descontos:
+            # Verificar se já existe registro real
+            if Expense.objects.filter(
+                description=desc, from_paycheck=True, financial_month=target_fm,
+            ).exists():
+                continue
+
+            cat = cat_map.get(desc, {'id': None, 'name': None})
+            virtual.append({
+                'id': f'paycheck-{target_fm.year}-{target_fm.month}-{desc}',
+                'description': desc,
+                'amount': str(amount),
+                'date': start.isoformat(),
+                'category': cat['id'],
+                'category_name': cat['name'],
+                'payment_type': pt_info['id'],
+                'payment_type_name': pt_info['name'],
+                'third_party': None,
+                'third_party_name': None,
+                'credit_card': None,
+                'credit_card_name': None,
+                'financial_month': target_fm.isoformat(),
+                'is_installment': False,
+                'installment_current': None,
+                'installment_total': None,
+                'installment_group_id': None,
+                'is_recurring': False,
+                'from_paycheck': True,
+                'due_day': None,
+                'boleto_status': None,
+                'notes': '',
+                'is_predicted': True,
+                'created_at': None,
+                'updated_at': None,
+            })
+
+        return virtual
 
     @action(detail=True, methods=['post'], url_path='mark-paid')
     def mark_paid(self, request, pk=None):
@@ -179,7 +272,7 @@ def boleto_alerts(request):
     # Boletos pendentes (recorrentes com due_day e status pendente)
     pending = Expense.objects.filter(
         boleto_status='pending',
-    ).select_related('category', 'bank', 'payment_type')
+    ).select_related('category', 'third_party', 'payment_type')
 
     alerts = []
     for exp in pending:
@@ -214,7 +307,7 @@ def boleto_alerts(request):
             'days_until': days_until,
             'alert_level': alert_level,
             'category_name': exp.category.name if exp.category else None,
-            'bank_name': exp.bank.name if exp.bank else None,
+            'third_party_name': exp.third_party.name if exp.third_party else None,
         })
 
     # Ordenar por urgência (vencidos primeiro, depois por dias até vencimento)
