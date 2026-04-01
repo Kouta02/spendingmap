@@ -434,6 +434,7 @@ def _get_predicted_balance(ref_date):
 def expenses_by_category(request):
     """
     Despesas agrupadas por categoria para o mês financeiro.
+    Para meses futuros, inclui despesas recorrentes virtuais.
     Query param: ?month=2026-03
     """
     month_param = request.query_params.get('month')
@@ -443,22 +444,124 @@ def expenses_by_category(request):
     else:
         ref_date = get_financial_month_for_date(date.today())
 
+    current_fm = get_financial_month_for_date(date.today())
+    is_future = ref_date > current_fm
+
+    # Despesas reais do mês agrupadas por categoria
+    totals_map = {}  # {category_id: {name, color, total, count}}
+
     data = (
         Expense.objects.filter(financial_month=ref_date)
         .values('category', 'category__name', 'category__color')
         .annotate(total=Sum('amount'), count=Count('id'))
         .order_by('-total')
     )
-
-    result = []
     for item in data:
-        result.append({
-            'category_id': str(item['category']) if item['category'] else None,
-            'category_name': item['category__name'] or 'Sem categoria',
-            'category_color': item['category__color'] or '#bdbdbd',
-            'total': str(item['total']),
+        cat_id = str(item['category']) if item['category'] else 'none'
+        totals_map[cat_id] = {
+            'name': item['category__name'] or 'Sem categoria',
+            'color': item['category__color'] or '#bdbdbd',
+            'total': item['total'],
             'count': item['count'],
-        })
+        }
+
+    # Para meses futuros, incluir recorrentes virtuais e descontos do contracheque
+    if is_future:
+        has_snapshot = SalarySnapshot.objects.filter(month=ref_date).exists()
+
+        # Despesas recorrentes virtuais
+        descriptions = (
+            Expense.objects
+            .filter(is_recurring=True)
+            .values_list('description', flat=True)
+            .distinct()
+        )
+        for desc in descriptions:
+            if Expense.objects.filter(
+                is_recurring=True, description=desc, financial_month=ref_date,
+            ).exists():
+                continue
+
+            latest = (
+                Expense.objects
+                .filter(is_recurring=True, description=desc)
+                .select_related('category', 'payment_type')
+                .order_by('-financial_month')
+                .first()
+            )
+            if not latest:
+                continue
+
+            latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
+            if ref_date <= latest_fm:
+                continue
+            if latest.from_paycheck:
+                continue
+
+            cat_id = str(latest.category_id) if latest.category_id else 'none'
+            if cat_id in totals_map:
+                totals_map[cat_id]['total'] += latest.amount
+                totals_map[cat_id]['count'] += 1
+            else:
+                totals_map[cat_id] = {
+                    'name': latest.category.name if latest.category else 'Sem categoria',
+                    'color': latest.category.color if latest.category else '#bdbdbd',
+                    'total': latest.amount,
+                    'count': 1,
+                }
+
+        # Descontos do contracheque calculados pelo SalaryEngine (PSS, IRPF, Funpresp)
+        if not has_snapshot and ref_date != EXCEPTION_MONTH:
+            result_salary = _calculate_salary_from_config(ref_date.year)
+            if result_salary:
+                descontos = _get_paycheck_deductions_from_result(result_salary)
+
+                # Buscar categorias dos registros reais mais recentes (from_paycheck)
+                cat_map = {}
+                prev_paycheck = (
+                    Expense.objects
+                    .filter(from_paycheck=True)
+                    .select_related('category')
+                    .order_by('-financial_month')
+                )
+                for exp in prev_paycheck:
+                    if exp.description not in cat_map and exp.category_id:
+                        cat_map[exp.description] = {
+                            'id': str(exp.category_id),
+                            'name': exp.category.name,
+                            'color': exp.category.color or '#bdbdbd',
+                        }
+
+                for desc, amount in descontos:
+                    cat_info = cat_map.get(desc)
+                    cat_id = cat_info['id'] if cat_info else 'none'
+                    amt = Decimal(str(amount))
+
+                    if cat_id in totals_map:
+                        totals_map[cat_id]['total'] += amt
+                        totals_map[cat_id]['count'] += 1
+                    else:
+                        totals_map[cat_id] = {
+                            'name': cat_info['name'] if cat_info else 'Sem categoria',
+                            'color': cat_info['color'] if cat_info else '#bdbdbd',
+                            'total': amt,
+                            'count': 1,
+                        }
+
+    result = sorted(
+        [
+            {
+                'category_id': cat_id if cat_id != 'none' else None,
+                'category_name': info['name'],
+                'category_color': info['color'],
+                'total': str(info['total']),
+                'count': info['count'],
+            }
+            for cat_id, info in totals_map.items()
+        ],
+        key=lambda x: Decimal(x['total']),
+        reverse=True,
+    )
 
     return Response(result)
 
@@ -467,6 +570,7 @@ def expenses_by_category(request):
 def expenses_by_credit_card(request):
     """
     Despesas agrupadas por cartão de crédito para o mês financeiro.
+    Para meses futuros, inclui despesas recorrentes virtuais com cartão.
     Query param: ?month=2026-03
     """
     month_param = request.query_params.get('month')
@@ -476,21 +580,80 @@ def expenses_by_credit_card(request):
     else:
         ref_date = get_financial_month_for_date(date.today())
 
+    current_fm = get_financial_month_for_date(date.today())
+    is_future = ref_date > current_fm
+
+    # Despesas reais do mês agrupadas por cartão
+    totals_map = {}  # {credit_card_id: {name, total, count}}
+
     data = (
         Expense.objects.filter(financial_month=ref_date, credit_card__isnull=False)
         .values('credit_card', 'credit_card__name')
         .annotate(total=Sum('amount'), count=Count('id'))
         .order_by('-total')
     )
-
-    result = []
     for item in data:
-        result.append({
-            'credit_card_id': str(item['credit_card']) if item['credit_card'] else None,
-            'credit_card_name': item['credit_card__name'] or 'Sem cartão',
-            'total': str(item['total']),
+        cc_id = str(item['credit_card'])
+        totals_map[cc_id] = {
+            'name': item['credit_card__name'] or 'Sem cartão',
+            'total': item['total'],
             'count': item['count'],
-        })
+        }
+
+    # Para meses futuros, incluir recorrentes virtuais com cartão
+    if is_future:
+        descriptions = (
+            Expense.objects
+            .filter(is_recurring=True, credit_card__isnull=False)
+            .values_list('description', flat=True)
+            .distinct()
+        )
+        for desc in descriptions:
+            if Expense.objects.filter(
+                is_recurring=True, description=desc, financial_month=ref_date,
+            ).exists():
+                continue
+
+            latest = (
+                Expense.objects
+                .filter(is_recurring=True, description=desc, credit_card__isnull=False)
+                .select_related('credit_card', 'payment_type')
+                .order_by('-financial_month')
+                .first()
+            )
+            if not latest or not latest.credit_card:
+                continue
+
+            latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
+            if ref_date <= latest_fm:
+                continue
+            if latest.from_paycheck:
+                continue
+
+            cc_id = str(latest.credit_card_id)
+            if cc_id in totals_map:
+                totals_map[cc_id]['total'] += latest.amount
+                totals_map[cc_id]['count'] += 1
+            else:
+                totals_map[cc_id] = {
+                    'name': latest.credit_card.name,
+                    'total': latest.amount,
+                    'count': 1,
+                }
+
+    result = sorted(
+        [
+            {
+                'credit_card_id': cc_id,
+                'credit_card_name': info['name'],
+                'total': str(info['total']),
+                'count': info['count'],
+            }
+            for cc_id, info in totals_map.items()
+        ],
+        key=lambda x: Decimal(x['total']),
+        reverse=True,
+    )
 
     return Response(result)
 
