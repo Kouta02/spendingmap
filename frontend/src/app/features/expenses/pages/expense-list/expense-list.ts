@@ -12,13 +12,12 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialog } from '@angular/material/dialog';
 import { DatePipe } from '@angular/common';
-import { format, subMonths, addMonths, parse } from 'date-fns';
-
 import { ExpenseService } from '../../../../core/services/expense.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { PaymentTypeService } from '../../../../core/services/payment-type.service';
 import { ThirdPartyService } from '../../../../core/services/third-party.service';
 import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
+import { MonthStateService } from '../../../../core/services/month-state.service';
 import { Expense, ExpenseFilters, CategoryFlat, PaymentType, ThirdParty } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 import {
@@ -122,6 +121,16 @@ interface ColumnFilter {
           }
         </mat-select>
       </mat-form-field>
+
+      <mat-form-field appearance="outline" class="filter-field">
+        <mat-label>Agrupar por</mat-label>
+        <mat-select [ngModel]="groupBy()" (ngModelChange)="onGroupByChange($event)">
+          <mat-option value="">Nenhum</mat-option>
+          <mat-option value="date">Data</mat-option>
+          <mat-option value="category">Categoria</mat-option>
+          <mat-option value="payment_type">Pagamento</mat-option>
+        </mat-select>
+      </mat-form-field>
     </div>
 
     @if (loading()) {
@@ -145,130 +154,192 @@ interface ColumnFilter {
           <a mat-flat-button routerLink="/expenses/new">Adicionar despesa</a>
         </div>
       } @else {
-        <table mat-table [dataSource]="filteredExpenses()" class="expense-table">
+        <table mat-table [dataSource]="tableDataSource()" class="expense-table">
           <ng-container matColumnDef="date">
-            <th mat-header-cell *matHeaderCellDef>
+            <th mat-header-cell *matHeaderCellDef (click)="toggleSort('date')"
+                [class.th-sorted]="sortColumn() === 'date'" class="th-sortable">
               <div class="th-filter">
                 Data
+                @if (sortColumn() === 'date') {
+                  <mat-icon class="sort-icon">{{ sortDir() === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+                }
                 <button class="col-filter-btn"
                         [class.col-filter-active]="isColumnFilterActive('date')"
                         (click)="openFilter('date', $event)">▾</button>
               </div>
             </th>
-            <td mat-cell *matCellDef="let e">{{ e.date | date: 'dd/MM/yyyy' }}</td>
+            <td mat-cell *matCellDef="let e">
+              @if (e._isGroup) {
+                @if (groupBy() === 'date') {
+                  <strong>{{ e._groupLabel }}</strong>
+                }
+              } @else {
+                {{ e.date | date: 'dd/MM/yyyy' }}
+              }
+            </td>
           </ng-container>
 
           <ng-container matColumnDef="description">
-            <th mat-header-cell *matHeaderCellDef>
+            <th mat-header-cell *matHeaderCellDef (click)="toggleSort('description')"
+                [class.th-sorted]="sortColumn() === 'description'" class="th-sortable">
               <div class="th-filter">
                 Descrição
+                @if (sortColumn() === 'description') {
+                  <mat-icon class="sort-icon">{{ sortDir() === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+                }
                 <button class="col-filter-btn"
                         [class.col-filter-active]="isColumnFilterActive('description')"
                         (click)="openFilter('description', $event)">▾</button>
               </div>
             </th>
             <td mat-cell *matCellDef="let e">
-              {{ e.description }}
-              @if (e.is_installment) {
-                <span class="badge installment" [matTooltip]="'Parcela ' + e.installment_current + ' de ' + e.installment_total">
-                  {{ e.installment_current }}/{{ e.installment_total }}
-                </span>
-              }
-              @if (e.is_recurring) {
-                <span class="badge recurring" matTooltip="Recorrente">
-                  <mat-icon inline>repeat</mat-icon>
-                </span>
-              }
-              @if (e.from_paycheck) {
-                <span class="badge paycheck" matTooltip="Contracheque">
-                  <mat-icon inline>payments</mat-icon>
-                </span>
-              }
-              @if (e.third_party_name) {
-                <span class="badge third-party" [matTooltip]="'Terceiro: ' + e.third_party_name">
-                  <mat-icon inline>person</mat-icon> {{ e.third_party_name }}
-                </span>
-              }
-              @if (e.is_predicted) {
-                <span class="badge predicted" matTooltip="Prevista — será confirmada automaticamente na data">
-                  <mat-icon inline>schedule</mat-icon> Prevista
-                </span>
-              }
-              @if (e.boleto_status === 'pending') {
-                @let alert = getBoletoAlert(e);
-                @if (alert === 'overdue') {
-                  <span class="badge boleto-overdue" matTooltip="Boleto vencido!">
-                    <mat-icon inline>error</mat-icon> VENCIDO
-                  </span>
-                } @else if (alert === 'due_today') {
-                  <span class="badge boleto-today" matTooltip="Vence hoje!">
-                    <mat-icon inline>warning</mat-icon> VENCE HOJE
-                  </span>
-                } @else if (alert === 'due_3_days') {
-                  <span class="badge boleto-soon" matTooltip="Vence em até 3 dias">
-                    <mat-icon inline>schedule</mat-icon> Vence em breve
-                  </span>
-                } @else if (alert === 'due_5_days') {
-                  <span class="badge boleto-5days" matTooltip="Vence em até 5 dias">
-                    <mat-icon inline>schedule</mat-icon> Vence em breve
-                  </span>
-                } @else {
-                  <span class="badge boleto-pending" matTooltip="Boleto pendente — dia {{ e.due_day }}">
-                    <mat-icon inline>receipt</mat-icon> Pendente
+              @if (e._isGroup) {
+                <span class="group-count">{{ e._count }} despesa{{ e._count > 1 ? 's' : '' }}</span>
+              } @else {
+                {{ e.description }}
+                @if (e.is_installment) {
+                  <span class="badge installment" [matTooltip]="'Parcela ' + e.installment_current + ' de ' + e.installment_total">
+                    {{ e.installment_current }}/{{ e.installment_total }}
                   </span>
                 }
-              }
-              @if (e.boleto_status === 'paid') {
-                <span class="badge boleto-paid" matTooltip="Boleto pago">
-                  <mat-icon inline>check_circle</mat-icon> Pago
-                </span>
+                @if (e.is_recurring) {
+                  <span class="badge recurring" matTooltip="Recorrente">
+                    <mat-icon inline>repeat</mat-icon>
+                  </span>
+                }
+                @if (e.from_paycheck) {
+                  <span class="badge paycheck" matTooltip="Contracheque">
+                    <mat-icon inline>payments</mat-icon>
+                  </span>
+                }
+                @if (e.third_party_name) {
+                  <span class="badge third-party" [matTooltip]="'Terceiro: ' + e.third_party_name">
+                    <mat-icon inline>person</mat-icon> {{ e.third_party_name }}
+                  </span>
+                }
+                @if (e.is_predicted) {
+                  <span class="badge predicted" matTooltip="Prevista — será confirmada automaticamente na data">
+                    <mat-icon inline>schedule</mat-icon> Prevista
+                  </span>
+                }
+                @if (e.boleto_status === 'pending') {
+                  @let alert = getBoletoAlert(e);
+                  @if (alert === 'overdue') {
+                    <span class="badge boleto-overdue" matTooltip="Boleto vencido!">
+                      <mat-icon inline>error</mat-icon> VENCIDO
+                    </span>
+                  } @else if (alert === 'due_today') {
+                    <span class="badge boleto-today" matTooltip="Vence hoje!">
+                      <mat-icon inline>warning</mat-icon> VENCE HOJE
+                    </span>
+                  } @else if (alert === 'due_3_days') {
+                    <span class="badge boleto-soon" matTooltip="Vence em até 3 dias">
+                      <mat-icon inline>schedule</mat-icon> Vence em breve
+                    </span>
+                  } @else if (alert === 'due_5_days') {
+                    <span class="badge boleto-5days" matTooltip="Vence em até 5 dias">
+                      <mat-icon inline>schedule</mat-icon> Vence em breve
+                    </span>
+                  } @else {
+                    <span class="badge boleto-pending" matTooltip="Boleto pendente — dia {{ e.due_day }}">
+                      <mat-icon inline>receipt</mat-icon> Pendente
+                    </span>
+                  }
+                }
+                @if (e.boleto_status === 'paid') {
+                  <span class="badge boleto-paid" matTooltip="Boleto pago">
+                    <mat-icon inline>check_circle</mat-icon> Pago
+                  </span>
+                }
               }
             </td>
           </ng-container>
 
           <ng-container matColumnDef="category">
-            <th mat-header-cell *matHeaderCellDef>
+            <th mat-header-cell *matHeaderCellDef (click)="toggleSort('category')"
+                [class.th-sorted]="sortColumn() === 'category'" class="th-sortable">
               <div class="th-filter">
                 Categoria
+                @if (sortColumn() === 'category') {
+                  <mat-icon class="sort-icon">{{ sortDir() === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+                }
                 <button class="col-filter-btn"
                         [class.col-filter-active]="isColumnFilterActive('category')"
                         (click)="openFilter('category', $event)">▾</button>
               </div>
             </th>
             <td mat-cell *matCellDef="let e">
-              @if (e.category_name) {
-                <span class="category-chip" [style.border-left-color]="getCategoryColor(e.category)">
-                  {{ e.category_name }}
-                </span>
+              @if (e._isGroup) {
+                @if (groupBy() === 'category') {
+                  <strong>{{ e._groupLabel }}</strong>
+                } @else {
+                  <span class="group-summary">{{ e._distinctCategories }} categoria{{ e._distinctCategories > 1 ? 's' : '' }}</span>
+                }
               } @else {
-                <span class="text-muted">—</span>
+                @if (e.category_name) {
+                  <span class="category-chip" [style.border-left-color]="getCategoryColor(e.category)">
+                    {{ e.category_name }}
+                  </span>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
               }
             </td>
           </ng-container>
 
           <ng-container matColumnDef="payment_type">
-            <th mat-header-cell *matHeaderCellDef>
+            <th mat-header-cell *matHeaderCellDef (click)="toggleSort('payment_type')"
+                [class.th-sorted]="sortColumn() === 'payment_type'" class="th-sortable">
               <div class="th-filter">
                 Pagamento
+                @if (sortColumn() === 'payment_type') {
+                  <mat-icon class="sort-icon">{{ sortDir() === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+                }
                 <button class="col-filter-btn"
                         [class.col-filter-active]="isColumnFilterActive('payment_type')"
                         (click)="openFilter('payment_type', $event)">▾</button>
               </div>
             </th>
-            <td mat-cell *matCellDef="let e">{{ e.credit_card_name ? e.payment_type_name + ' - ' + e.credit_card_name : (e.payment_type_name || '—') }}</td>
+            <td mat-cell *matCellDef="let e">
+              @if (e._isGroup) {
+                @if (groupBy() === 'payment_type') {
+                  <strong>{{ e._groupLabel }}</strong>
+                } @else {
+                  <span class="group-summary">{{ e._distinctPaymentTypes }} tipo{{ e._distinctPaymentTypes > 1 ? 's' : '' }}</span>
+                }
+              } @else {
+                {{ e.credit_card_name ? e.payment_type_name + ' - ' + e.credit_card_name : (e.payment_type_name || '—') }}
+              }
+            </td>
           </ng-container>
 
           <ng-container matColumnDef="amount">
-            <th mat-header-cell *matHeaderCellDef>Valor</th>
+            <th mat-header-cell *matHeaderCellDef (click)="toggleSort('amount')"
+                [class.th-sorted]="sortColumn() === 'amount'" class="th-sortable">
+              <div class="th-filter">
+                Valor
+                @if (sortColumn() === 'amount') {
+                  <mat-icon class="sort-icon">{{ sortDir() === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+                }
+              </div>
+            </th>
             <td mat-cell *matCellDef="let e" class="amount-cell">
-              {{ e.amount | currencyBrl }}
+              @if (e._isGroup) {
+                <strong>{{ e._totalAmount | currencyBrl }}</strong>
+              } @else {
+                {{ e.amount | currencyBrl }}
+              }
             </td>
           </ng-container>
 
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef></th>
             <td mat-cell *matCellDef="let e">
-              @if (!e.is_predicted) {
+              @if (e._isGroup) {
+                <button mat-icon-button (click)="toggleGroup(e._groupKey)" [matTooltip]="isGroupExpanded(e._groupKey) ? 'Recolher' : 'Expandir'">
+                  <mat-icon>{{ isGroupExpanded(e._groupKey) ? 'remove' : 'add' }}</mat-icon>
+                </button>
+              } @else if (!e.is_predicted) {
                 @if (e.boleto_status === 'pending') {
                   <button mat-icon-button (click)="openMarkPaid(e)" matTooltip="Marcar como pago" color="primary">
                     <mat-icon>paid</mat-icon>
@@ -285,7 +356,10 @@ interface ColumnFilter {
           </ng-container>
 
           <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-          <tr mat-row *matRowDef="let row; columns: displayedColumns" [class.predicted-row]="row.is_predicted"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns"
+              [class.predicted-row]="row.is_predicted"
+              [class.group-row]="row._isGroup"
+              [class.group-child-row]="row._isChild"></tr>
         </table>
       }
     }
@@ -496,6 +570,45 @@ interface ColumnFilter {
       height: 48px;
     }
 
+    /* ========== Agrupamento ========== */
+    .group-row {
+      background: var(--mat-sys-surface-container);
+      font-weight: 500;
+    }
+    .group-row:hover {
+      background: var(--mat-sys-surface-container-high) !important;
+    }
+    .group-child-row {
+      background: var(--mat-sys-surface-container-lowest);
+    }
+    .group-count {
+      font-weight: 500;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    .group-summary {
+      font-size: 0.85rem;
+      color: var(--mat-sys-on-surface-variant);
+    }
+
+    /* ========== Ordenação por coluna ========== */
+    .th-sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+    .th-sortable:hover {
+      background: rgba(0, 0, 0, 0.04);
+    }
+    .th-sorted {
+      color: var(--mat-sys-primary);
+    }
+    .sort-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      vertical-align: middle;
+      color: var(--mat-sys-primary);
+    }
+
     /* ========== Filtro por coluna (estilo Excel) ========== */
     .th-filter {
       display: flex;
@@ -653,6 +766,7 @@ export class ExpenseList implements OnInit {
   private readonly paymentTypeService = inject(PaymentTypeService);
   private readonly thirdPartyService = inject(ThirdPartyService);
   private readonly financialCalendarService = inject(FinancialCalendarService);
+  private readonly monthState = inject(MonthStateService);
   private readonly dialog = inject(MatDialog);
 
   expenses = signal<Expense[]>([]);
@@ -670,13 +784,15 @@ export class ExpenseList implements OnInit {
     });
   });
   loading = signal(true);
-  currentMonth = signal(format(new Date(), 'yyyy-MM'));
-  monthLabel = signal('');
+  currentMonth = this.monthState.currentMonth;
+  monthLabel = this.monthState.monthLabel;
 
   filterCategory = '';
   filterThirdParty = '';
   filterCreditCard = '';
   filterPaymentType = '';
+  groupBy = signal('');
+  expandedGroups = signal<Set<string>>(new Set());
 
   displayedColumns = [
     'date',
@@ -753,18 +869,93 @@ export class ExpenseList implements OnInit {
     const dir = this.sortDir();
     if (sortCol) {
       result = [...result].sort((a, b) => {
-        let va: string | number = this.getColumnValue(a, sortCol);
-        let vb: string | number = this.getColumnValue(b, sortCol);
-        if (sortCol === 'date') {
-          return dir === 'asc' ? va.localeCompare(vb as string) : (vb as string).localeCompare(va as string);
+        if (sortCol === 'amount') {
+          const na = parseFloat(String(a.amount));
+          const nb = parseFloat(String(b.amount));
+          return dir === 'asc' ? na - nb : nb - na;
         }
-        const cmp = (va as string).localeCompare(vb as string, 'pt-BR', { sensitivity: 'base' });
+        const va = this.getColumnValue(a, sortCol);
+        const vb = this.getColumnValue(b, sortCol);
+        if (sortCol === 'date') {
+          return dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+        }
+        const cmp = va.localeCompare(vb, 'pt-BR', { sensitivity: 'base' });
         return dir === 'asc' ? cmp : -cmp;
       });
     }
 
     return result;
   });
+
+  tableDataSource = computed(() => {
+    const expenses = this.filteredExpenses();
+    const gb = this.groupBy();
+    if (!gb) return expenses;
+
+    const groups = new Map<string, any[]>();
+    for (const e of expenses) {
+      let key: string;
+      if (gb === 'date') key = e.date;
+      else if (gb === 'category') key = e.category_name || '(sem categoria)';
+      else key = e.credit_card_name
+        ? (e.payment_type_name || '—') + ' - ' + e.credit_card_name
+        : (e.payment_type_name || '—');
+
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(e);
+    }
+
+    const expanded = this.expandedGroups();
+    const rows: any[] = [];
+
+    for (const [key, items] of groups) {
+      let label = key;
+      if (gb === 'date') {
+        const [y, m, d] = key.split('-');
+        label = `${d}/${m}/${y}`;
+      }
+
+      const distinctCategories = new Set(items.map((e: any) => e.category_name || '(sem categoria)')).size;
+      const distinctPaymentTypes = new Set(items.map((e: any) =>
+        e.credit_card_name ? (e.payment_type_name || '—') + ' - ' + e.credit_card_name : (e.payment_type_name || '—')
+      )).size;
+      const totalAmount = items.reduce((sum: number, e: any) => sum + parseFloat(String(e.amount)), 0);
+
+      rows.push({
+        _isGroup: true,
+        _groupKey: key,
+        _groupLabel: label,
+        _count: items.length,
+        _totalAmount: totalAmount,
+        _distinctCategories: distinctCategories,
+        _distinctPaymentTypes: distinctPaymentTypes,
+      });
+
+      if (expanded.has(key)) {
+        for (const item of items) {
+          rows.push({ ...item, _isChild: true });
+        }
+      }
+    }
+
+    return rows;
+  });
+
+  toggleGroup(key: string): void {
+    const current = new Set(this.expandedGroups());
+    if (current.has(key)) current.delete(key);
+    else current.add(key);
+    this.expandedGroups.set(current);
+  }
+
+  isGroupExpanded(key: string): boolean {
+    return this.expandedGroups().has(key);
+  }
+
+  onGroupByChange(value: string): void {
+    this.groupBy.set(value);
+    this.expandedGroups.set(new Set());
+  }
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
@@ -805,6 +996,19 @@ export class ExpenseList implements OnInit {
     this.sortColumn.set(column);
     this.sortDir.set(dir);
     this.closeFilter();
+  }
+
+  toggleSort(column: string): void {
+    if (this.sortColumn() === column) {
+      if (this.sortDir() === 'asc') {
+        this.sortDir.set('desc');
+      } else {
+        this.sortColumn.set(null);
+      }
+    } else {
+      this.sortColumn.set(column);
+      this.sortDir.set('asc');
+    }
   }
 
   getFilterSearch(column: string): string {
@@ -920,18 +1124,7 @@ export class ExpenseList implements OnInit {
       this.creditCards.set(cards.map((c) => ({ id: c.id, name: c.name })))
     );
 
-    this.financialCalendarService.getCurrentFinancialMonth().subscribe({
-      next: (fm) => {
-        const fmStr = format(new Date(fm.year, fm.month - 1, 1), 'yyyy-MM');
-        this.currentMonth.set(fmStr);
-        this.updateMonthLabel();
-        this.loadExpenses();
-      },
-      error: () => {
-        this.updateMonthLabel();
-        this.loadExpenses();
-      },
-    });
+    this.monthState.init().then(() => this.loadExpenses());
   }
 
   loadExpenses(): void {
@@ -966,24 +1159,13 @@ export class ExpenseList implements OnInit {
   }
 
   prevMonth(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.currentMonth.set(format(subMonths(d, 1), 'yyyy-MM'));
-    this.updateMonthLabel();
+    this.monthState.prevMonth();
     this.loadExpenses();
   }
 
   nextMonth(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.currentMonth.set(format(addMonths(d, 1), 'yyyy-MM'));
-    this.updateMonthLabel();
+    this.monthState.nextMonth();
     this.loadExpenses();
-  }
-
-  private updateMonthLabel(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.monthLabel.set(
-      d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-    );
   }
 
   getCategoryColor(categoryId: string | null): string {
@@ -1035,6 +1217,11 @@ export class ExpenseList implements OnInit {
   }
 
   confirmDelete(expense: Expense): void {
+    if (expense.is_installment && expense.installment_group_id) {
+      this.confirmDeleteInstallment(expense);
+      return;
+    }
+
     const ref = this.dialog.open(ConfirmDialog, {
       data: {
         title: 'Excluir Despesa',
@@ -1049,6 +1236,37 @@ export class ExpenseList implements OnInit {
           this.loadExpenses();
         });
       }
+    });
+  }
+
+  private confirmDeleteInstallment(expense: Expense): void {
+    // Contar parcelas a partir do mês selecionado
+    const currentMonth = this.currentMonth();
+
+    this.expenseService.list({ month: currentMonth, ordering: 'date' }).subscribe((all) => {
+      const groupExpenses = all.filter(e =>
+        e.installment_group_id === expense.installment_group_id
+      );
+      // Parcela atual é 1 das do mês; total do grupo a partir deste mês obtemos via contagem
+      const parcela = expense.installment_current || 1;
+      const total = expense.installment_total || 1;
+      const restantes = total - parcela + 1;
+
+      const ref = this.dialog.open(ConfirmDialog, {
+        data: {
+          title: 'Excluir Parcelas',
+          message: `Deseja excluir todas as ${restantes} parcelas restantes de "${expense.description}" (${parcela}/${total} a ${total}/${total})?`,
+          confirmText: `Excluir ${restantes} parcelas`,
+        } as ConfirmDialogData,
+      });
+
+      ref.afterClosed().subscribe((confirmed) => {
+        if (confirmed) {
+          this.expenseService.deleteInstallments(expense.id, currentMonth).subscribe(() => {
+            this.loadExpenses();
+          });
+        }
+      });
     });
   }
 }

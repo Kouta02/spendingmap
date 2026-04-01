@@ -29,6 +29,7 @@ export class AuthService {
 
   logout(): void {
     sessionStorage.removeItem(this.TOKEN_KEY);
+    sessionStorage.removeItem('sm_selected_month');
     this.isAuthenticated.set(false);
     this.router.navigate(['/login']);
   }

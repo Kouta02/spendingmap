@@ -21,7 +21,6 @@ echarts.use([
   TitleComponent, TooltipComponent, LegendComponent, GridComponent,
   CanvasRenderer, LabelLayout,
 ]);
-import { format, subMonths, addMonths, parse } from 'date-fns';
 import type { EChartsOption } from 'echarts';
 
 import { RouterLink } from '@angular/router';
@@ -29,7 +28,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatMenuModule } from '@angular/material/menu';
 import { DashboardService, ExpenseDetails, ExpenseDetailItem } from '../../../../core/services/dashboard.service';
 import { GoalService } from '../../../../core/services/goal.service';
-import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
+import { MonthStateService } from '../../../../core/services/month-state.service';
 import { ExpenseService, BoletoAlert } from '../../../../core/services/expense.service';
 import {
   MonthlySummary,
@@ -591,15 +590,15 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 export class DashboardPage implements OnInit {
   private readonly dashboardService = inject(DashboardService);
   private readonly goalService = inject(GoalService);
-  private readonly financialCalendarService = inject(FinancialCalendarService);
+  private readonly monthState = inject(MonthStateService);
   private readonly expenseService = inject(ExpenseService);
   private readonly currencyPipe = new CurrencyBrlPipe();
 
   Math = Math;
 
   loading = signal(true);
-  currentMonth = signal(format(new Date(), 'yyyy-MM'));
-  monthLabel = signal('');
+  currentMonth = this.monthState.currentMonth;
+  monthLabel = this.monthState.monthLabel;
 
   summary = signal<MonthlySummary | null>(null);
   categoryData = signal<CategoryBreakdown[]>([]);
@@ -616,19 +615,7 @@ export class DashboardPage implements OnInit {
   details = signal<ExpenseDetails | null>(null);
 
   ngOnInit(): void {
-    // Buscar mês financeiro corrente antes de carregar dados
-    this.financialCalendarService.getCurrentFinancialMonth().subscribe({
-      next: (fm) => {
-        this.currentMonth.set(format(new Date(fm.year, fm.month - 1, 1), 'yyyy-MM'));
-        this.updateMonthLabel();
-        this.loadAll();
-      },
-      error: () => {
-        // Fallback: mês calendário
-        this.updateMonthLabel();
-        this.loadAll();
-      },
-    });
+    this.monthState.init().then(() => this.loadAll());
   }
 
   loadAll(): void {
@@ -708,24 +695,13 @@ export class DashboardPage implements OnInit {
   }
 
   prevMonth(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.currentMonth.set(format(subMonths(d, 1), 'yyyy-MM'));
-    this.updateMonthLabel();
+    this.monthState.prevMonth();
     this.loadAll();
   }
 
   nextMonth(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.currentMonth.set(format(addMonths(d, 1), 'yyyy-MM'));
-    this.updateMonthLabel();
+    this.monthState.nextMonth();
     this.loadAll();
-  }
-
-  private updateMonthLabel(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.monthLabel.set(
-      d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-    );
   }
 
   toNum(val: string | undefined | null): number {
