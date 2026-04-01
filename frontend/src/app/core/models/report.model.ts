@@ -11,17 +11,20 @@ export interface ReportSummary {
   }[];
 }
 
+export interface ReportCategoryItem {
+  category_id: string | null;
+  category_name: string;
+  category_color: string;
+  parent_id: string | null;
+  total: string;
+  count: number;
+  percentage: number;
+}
+
 export interface ReportByCategory {
   period: { start: string; end: string };
   total: string;
-  data: {
-    category_id: string | null;
-    category_name: string;
-    category_color: string;
-    total: string;
-    count: number;
-    percentage: number;
-  }[];
+  data: ReportCategoryItem[];
 }
 
 export interface InstallmentGroup {

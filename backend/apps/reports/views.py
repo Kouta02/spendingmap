@@ -69,10 +69,11 @@ def summary_by_period(request):
 def by_category_period(request):
     """
     Despesas por categoria em um período.
-    Query params: ?start=2026-01-01&end=2026-06-30
+    Query params: ?start=2026-01-01&end=2026-06-30&payment_types=uuid1,uuid2
     """
     start = request.query_params.get('start')
     end = request.query_params.get('end')
+    payment_types = request.query_params.get('payment_types')
 
     if not start or not end:
         fm = get_financial_month_for_date(date.today())
@@ -80,22 +81,51 @@ def by_category_period(request):
         start = fm_start.isoformat()
         end = fm_end.isoformat()
 
+    qs = Expense.objects.filter(date__gte=start, date__lte=end)
+    if payment_types:
+        pt_ids = [pt.strip() for pt in payment_types.split(',') if pt.strip()]
+        qs = qs.filter(payment_type_id__in=pt_ids)
+
     data = (
-        Expense.objects.filter(date__gte=start, date__lte=end)
-        .values('category', 'category__name', 'category__color')
+        qs.values('category', 'category__name', 'category__color', 'category__parent')
         .annotate(total=Sum('amount'), count=Count('id'))
         .order_by('-total')
     )
 
+    from apps.categories.models import Category
+
     result = []
+    result_ids = set()
     for item in data:
+        cat_id = str(item['category']) if item['category'] else None
         result.append({
-            'category_id': str(item['category']) if item['category'] else None,
+            'category_id': cat_id,
             'category_name': item['category__name'] or 'Sem categoria',
             'category_color': item['category__color'] or '#bdbdbd',
+            'parent_id': str(item['category__parent']) if item['category__parent'] else None,
             'total': str(item['total']),
             'count': item['count'],
         })
+        if cat_id:
+            result_ids.add(cat_id)
+
+    # Incluir categorias pai que não têm despesas próprias mas têm filhas no resultado
+    parent_ids_needed = set()
+    for r in result:
+        if r['parent_id'] and r['parent_id'] not in result_ids:
+            parent_ids_needed.add(r['parent_id'])
+
+    if parent_ids_needed:
+        parents = Category.objects.filter(id__in=parent_ids_needed)
+        for cat in parents:
+            result.append({
+                'category_id': str(cat.id),
+                'category_name': cat.name,
+                'category_color': cat.color or '#bdbdbd',
+                'parent_id': str(cat.parent_id) if cat.parent_id else None,
+                'total': '0',
+                'count': 0,
+            })
 
     total_geral = sum(Decimal(r['total']) for r in result)
     for r in result:
@@ -106,6 +136,73 @@ def by_category_period(request):
         'total': str(total_geral),
         'data': result,
     })
+
+
+@api_view(['GET'])
+def expenses_by_category_detail(request):
+    """
+    Lista despesas de uma categoria específica em um período.
+    Query params: ?start=2026-01-01&end=2026-06-30&category=uuid&payment_types=uuid1,uuid2
+    Se category_group=true, inclui despesas de todas as subcategorias.
+    """
+    start = request.query_params.get('start')
+    end = request.query_params.get('end')
+    category_id = request.query_params.get('category')
+    category_group = request.query_params.get('category_group', 'false') == 'true'
+    payment_types = request.query_params.get('payment_types')
+
+    if not start or not end:
+        fm = get_financial_month_for_date(date.today())
+        fm_start, fm_end = get_financial_month_range(fm.year, fm.month)
+        start = fm_start.isoformat()
+        end = fm_end.isoformat()
+
+    from apps.categories.models import Category
+
+    qs = Expense.objects.filter(date__gte=start, date__lte=end)
+    if payment_types:
+        pt_ids = [pt.strip() for pt in payment_types.split(',') if pt.strip()]
+        qs = qs.filter(payment_type_id__in=pt_ids)
+
+    if category_id:
+        if category_group:
+            # Incluir a categoria pai + todas as subcategorias
+            child_ids = list(
+                Category.objects.filter(parent_id=category_id)
+                .values_list('id', flat=True)
+            )
+            all_ids = [category_id] + [str(cid) for cid in child_ids]
+            qs = qs.filter(category_id__in=all_ids)
+        else:
+            qs = qs.filter(category_id=category_id)
+    else:
+        qs = qs.filter(category__isnull=True)
+
+    qs = qs.select_related('category', 'payment_type', 'credit_card', 'third_party')
+    qs = qs.order_by('-date')
+
+    result = []
+    for exp in qs:
+        result.append({
+            'id': str(exp.id),
+            'description': exp.description,
+            'amount': str(exp.amount),
+            'date': exp.date.isoformat(),
+            'category_name': exp.category.name if exp.category else None,
+            'category': str(exp.category_id) if exp.category_id else None,
+            'payment_type_name': exp.payment_type.name if exp.payment_type else None,
+            'credit_card_name': exp.credit_card.name if exp.credit_card else None,
+            'is_installment': exp.is_installment,
+            'installment_current': exp.installment_current,
+            'installment_total': exp.installment_total,
+            'is_recurring': exp.is_recurring,
+            'from_paycheck': exp.from_paycheck,
+            'third_party_name': exp.third_party.name if exp.third_party else None,
+            'boleto_status': exp.boleto_status,
+            'due_day': exp.due_day,
+        })
+
+    return Response(result)
 
 
 @api_view(['GET'])
