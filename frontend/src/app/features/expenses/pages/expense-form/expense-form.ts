@@ -16,16 +16,19 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { NgxMaskDirective } from 'ngx-mask';
 import { format } from 'date-fns';
 
+import { MatDialog } from '@angular/material/dialog';
 import { ExpenseService } from '../../../../core/services/expense.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { PaymentTypeService } from '../../../../core/services/payment-type.service';
 import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
 import { ThirdPartyService } from '../../../../core/services/third-party.service';
 import { CategoryFlat, PaymentType, CreditCard, ThirdParty, ExpenseCreate } from '../../../../core/models';
+import { CategoryDialog, CategoryDialogData } from '../../../../shared/components/category-dialog/category-dialog';
 
 @Component({
   selector: 'app-expense-form',
@@ -43,6 +46,7 @@ import { CategoryFlat, PaymentType, CreditCard, ThirdParty, ExpenseCreate } from
     MatSlideToggleModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    MatTooltipModule,
     NgxMaskDirective,
   ],
   providers: [provideNativeDateAdapter()],
@@ -144,26 +148,45 @@ import { CategoryFlat, PaymentType, CreditCard, ThirdParty, ExpenseCreate } from
 
         <!-- Número de parcelas (condicional) -->
         @if (form.get('is_installment')?.value) {
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Número de parcelas</mat-label>
-            <input
-              matInput
-              type="number"
-              formControlName="installment_total"
-              min="2"
-              max="72"
-            />
-            @if (form.get('installment_total')?.hasError('required')) {
-              <mat-error>Informe o número de parcelas</mat-error>
-            }
-            @if (form.get('installment_total')?.hasError('min')) {
-              <mat-error>Mínimo 2 parcelas</mat-error>
-            }
-          </mat-form-field>
+          <div class="row">
+            <mat-form-field appearance="outline" class="half-width">
+              <mat-label>Total de parcelas</mat-label>
+              <input
+                matInput
+                type="number"
+                formControlName="installment_total"
+                min="2"
+                max="240"
+              />
+              @if (form.get('installment_total')?.hasError('required')) {
+                <mat-error>Informe o total de parcelas</mat-error>
+              }
+              @if (form.get('installment_total')?.hasError('min')) {
+                <mat-error>Mínimo 2 parcelas</mat-error>
+              }
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="half-width">
+              <mat-label>Parcela inicial</mat-label>
+              <input
+                matInput
+                type="number"
+                formControlName="installment_start"
+                min="1"
+                [max]="form.get('installment_total')?.value || 240"
+              />
+              <mat-hint>A partir de qual parcela criar</mat-hint>
+            </mat-form-field>
+          </div>
           <p class="info-text">
             <mat-icon inline>info</mat-icon>
-            Serão criadas {{ form.get('installment_total')?.value || 0 }} parcelas
-            a partir da data selecionada.
+            @if ((form.get('installment_start')?.value || 1) > 1) {
+              Serão criadas {{ (form.get('installment_total')?.value || 0) - (form.get('installment_start')?.value || 1) + 1 }} parcelas
+              ({{ form.get('installment_start')?.value }}/{{ form.get('installment_total')?.value }} a {{ form.get('installment_total')?.value }}/{{ form.get('installment_total')?.value }})
+              a partir da data selecionada.
+            } @else {
+              Serão criadas {{ form.get('installment_total')?.value || 0 }} parcelas
+              a partir da data selecionada.
+            }
           </p>
         }
 
@@ -203,24 +226,29 @@ import { CategoryFlat, PaymentType, CreditCard, ThirdParty, ExpenseCreate } from
         }
 
         <!-- 5ª linha: Categoria -->
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Categoria</mat-label>
-          <mat-select formControlName="category">
-            <mat-option [value]="null">Nenhuma</mat-option>
-            @for (group of categoryGroups(); track group.root.id) {
-              @if (group.children.length > 0) {
-                <mat-optgroup [label]="group.root.name">
-                  <mat-option [value]="group.root.id">{{ group.root.name }} (geral)</mat-option>
-                  @for (child of group.children; track child.id) {
-                    <mat-option [value]="child.id">{{ child.name }}</mat-option>
-                  }
-                </mat-optgroup>
-              } @else {
-                <mat-option [value]="group.root.id">{{ group.root.name }}</mat-option>
+        <div class="category-row">
+          <mat-form-field appearance="outline" class="category-field">
+            <mat-label>Categoria</mat-label>
+            <mat-select formControlName="category">
+              <mat-option [value]="null">Nenhuma</mat-option>
+              @for (group of categoryGroups(); track group.root.id) {
+                @if (group.children.length > 0) {
+                  <mat-optgroup [label]="group.root.name">
+                    <mat-option [value]="group.root.id">{{ group.root.name }} (geral)</mat-option>
+                    @for (child of group.children; track child.id) {
+                      <mat-option [value]="child.id">{{ child.name }}</mat-option>
+                    }
+                  </mat-optgroup>
+                } @else {
+                  <mat-option [value]="group.root.id">{{ group.root.name }}</mat-option>
+                }
               }
-            }
-          </mat-select>
-        </mat-form-field>
+            </mat-select>
+          </mat-form-field>
+          <button mat-icon-button type="button" (click)="openNewCategory()" matTooltip="Criar nova categoria" class="add-category-btn">
+            <mat-icon>add</mat-icon>
+          </button>
+        </div>
 
         <!-- 6ª linha: Observações -->
         <mat-form-field appearance="outline" class="full-width">
@@ -277,6 +305,17 @@ import { CategoryFlat, PaymentType, CreditCard, ThirdParty, ExpenseCreate } from
       width: 18px;
       height: 18px;
     }
+    .category-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .category-field {
+      flex: 1;
+    }
+    .add-category-btn {
+      margin-top: 8px;
+    }
     .form-actions {
       display: flex;
       gap: 12px;
@@ -304,6 +343,7 @@ export class ExpenseForm implements OnInit {
   private readonly financialCalendarService = inject(FinancialCalendarService);
   private readonly thirdPartyService = inject(ThirdPartyService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
   categories = signal<CategoryFlat[]>([]);
   paymentTypes = signal<PaymentType[]>([]);
@@ -335,6 +375,7 @@ export class ExpenseForm implements OnInit {
     credit_card: [null],
     is_installment: [false],
     installment_total: [null],
+    installment_start: [1],
     is_recurring: [false],
     has_third_party: [false],
     third_party: [null],
@@ -413,6 +454,7 @@ export class ExpenseForm implements OnInit {
     } else {
       this.form.get('installment_total')?.clearValidators();
       this.form.get('installment_total')?.setValue(null);
+      this.form.get('installment_start')?.setValue(1);
     }
     this.form.get('installment_total')?.updateValueAndValidity();
   }
@@ -453,6 +495,22 @@ export class ExpenseForm implements OnInit {
     return parseFloat(str);
   }
 
+  openNewCategory(): void {
+    const ref = this.dialog.open(CategoryDialog, {
+      width: '400px',
+      data: { categories: this.categories() } as CategoryDialogData,
+    });
+
+    ref.afterClosed().subscribe((created) => {
+      if (created) {
+        this.categoryService.flat().subscribe((cats) => {
+          this.categories.set(cats);
+          this.form.get('category')?.setValue(created.id);
+        });
+      }
+    });
+  }
+
   onSubmit(): void {
     if (this.form.invalid) return;
 
@@ -468,6 +526,7 @@ export class ExpenseForm implements OnInit {
       third_party: val.has_third_party ? (val.third_party || null) : null,
       is_installment: val.is_installment || false,
       installment_total: val.is_installment ? val.installment_total : null,
+      installment_start: val.is_installment && val.installment_start > 1 ? val.installment_start : undefined,
       is_recurring: val.is_recurring || false,
       due_day: val.due_day || null,
       boleto_status: this.isEditing() ? this.originalBoletoStatus : (val.due_day ? 'pending' : null),
@@ -480,12 +539,16 @@ export class ExpenseForm implements OnInit {
 
     request$.subscribe({
       next: () => {
-        this.snackBar.open(
-          this.isEditing() ? 'Despesa atualizada!' : 'Despesa criada!',
-          'OK',
-          { duration: 3000 }
-        );
-        this.router.navigate(['/expenses']);
+        this.saving.set(false);
+        if (this.isEditing()) {
+          this.snackBar.open('Despesa atualizada!', 'OK', { duration: 3000 });
+          this.router.navigate(['/expenses']);
+        } else {
+          this.snackBar.open('Despesa criada!', 'OK', { duration: 3000 });
+          this.form.patchValue({ description: '', amount: '', notes: '' });
+          this.form.get('description')?.markAsUntouched();
+          this.form.get('amount')?.markAsUntouched();
+        }
       },
       error: (err) => {
         this.saving.set(false);
