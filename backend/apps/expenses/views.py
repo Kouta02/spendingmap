@@ -248,6 +248,31 @@ class ExpenseViewSet(ModelViewSet):
 
         return virtual
 
+    @action(detail=True, methods=['delete'], url_path='delete-installments')
+    def delete_installments(self, request, pk=None):
+        """
+        Exclui parcelas de um grupo a partir do mês financeiro informado.
+        Query param: ?from_month=2026-04 (opcional, padrão: todas)
+        """
+        expense = self.get_object()
+        if not expense.installment_group_id:
+            return Response(
+                {'detail': 'Esta despesa não faz parte de um grupo de parcelas.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = Expense.objects.filter(installment_group_id=expense.installment_group_id)
+
+        from_month = request.query_params.get('from_month')
+        if from_month:
+            year, month = map(int, from_month.split('-'))
+            ref_date = date(year, month, 1)
+            qs = qs.filter(financial_month__gte=ref_date)
+
+        count = qs.count()
+        qs.delete()
+        return Response({'deleted': count})
+
     @action(detail=True, methods=['post'], url_path='mark-paid')
     def mark_paid(self, request, pk=None):
         """Marca um boleto como pago, permitindo ajustar o valor."""

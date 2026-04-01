@@ -36,6 +36,7 @@ export interface ExpenseCreate {
   credit_card?: string | null;
   is_installment?: boolean;
   installment_total?: number | null;
+  installment_start?: number;
   is_recurring?: boolean;
   due_day?: number | null;
   boleto_status?: string | null;

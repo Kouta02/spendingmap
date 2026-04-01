@@ -37,6 +37,12 @@ export class ExpenseService {
     return this.http.delete<void>(`${this.baseUrl}${id}/`);
   }
 
+  deleteInstallments(id: string, fromMonth?: string): Observable<{ deleted: number }> {
+    let params = new HttpParams();
+    if (fromMonth) params = params.set('from_month', fromMonth);
+    return this.http.delete<{ deleted: number }>(`${this.baseUrl}${id}/delete-installments/`, { params });
+  }
+
   markPaid(id: string, amount?: number): Observable<Expense> {
     const body: Record<string, unknown> = {};
     if (amount !== undefined) body['amount'] = amount;
