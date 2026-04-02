@@ -22,6 +22,8 @@ export interface Income {
   category_name: string | null;
   third_party: string | null;
   third_party_name: string | null;
+  credit_card: string | null;
+  credit_card_name: string | null;
   is_recurring: boolean;
   notes: string;
   created_at: string;
@@ -34,6 +36,7 @@ export interface IncomeCreate {
   date: string;
   category?: string | null;
   third_party?: string | null;
+  credit_card?: string | null;
   is_recurring?: boolean;
   notes?: string;
 }

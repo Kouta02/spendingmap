@@ -641,6 +641,17 @@ def expenses_by_credit_card(request):
                     'count': 1,
                 }
 
+    # Subtrair devoluções de cartão (receitas vinculadas a cartão de crédito)
+    refunds = (
+        Income.objects.filter(financial_month=ref_date, credit_card__isnull=False)
+        .values('credit_card')
+        .annotate(total=Sum('amount'))
+    )
+    for item in refunds:
+        cc_id = str(item['credit_card'])
+        if cc_id in totals_map:
+            totals_map[cc_id]['total'] -= item['total']
+
     result = sorted(
         [
             {

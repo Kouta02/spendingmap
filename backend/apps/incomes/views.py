@@ -3,7 +3,10 @@ from datetime import date as date_type
 from django_filters import rest_framework as filters
 from rest_framework.viewsets import ModelViewSet
 
-from apps.financial_calendar.services import get_financial_month_for_date
+from apps.financial_calendar.services import (
+    get_credit_card_financial_month,
+    get_financial_month_for_date,
+)
 
 from .models import Income, IncomeCategory
 from .serializers import IncomeSerializer, IncomeCategorySerializer
@@ -31,7 +34,7 @@ class IncomeFilter(filters.FilterSet):
 
 
 class IncomeViewSet(ModelViewSet):
-    queryset = Income.objects.select_related('category', 'third_party').all()
+    queryset = Income.objects.select_related('category', 'third_party', 'credit_card').all()
     serializer_class = IncomeSerializer
     filterset_class = IncomeFilter
     ordering_fields = ['date', 'amount', 'created_at']
@@ -41,7 +44,11 @@ class IncomeViewSet(ModelViewSet):
     def _set_financial_month(self, serializer):
         income_date = serializer.validated_data.get('date')
         if income_date:
-            fm = get_financial_month_for_date(income_date)
+            credit_card = serializer.validated_data.get('credit_card')
+            if credit_card:
+                fm = get_credit_card_financial_month(income_date, credit_card)
+            else:
+                fm = get_financial_month_for_date(income_date)
             serializer.save(financial_month=fm)
         else:
             serializer.save()

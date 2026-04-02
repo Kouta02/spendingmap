@@ -17,7 +17,8 @@ import { NgxMaskDirective } from 'ngx-mask';
 import { format } from 'date-fns';
 
 import { IncomeService } from '../../../../core/services/income.service';
-import { IncomeCategory, IncomeCreate } from '../../../../core/models';
+import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
+import { IncomeCategory, IncomeCreate, CreditCard } from '../../../../core/models';
 
 @Component({
   selector: 'app-income-form',
@@ -76,7 +77,19 @@ import { IncomeCategory, IncomeCreate } from '../../../../core/models';
 
         <div class="toggles">
           <mat-slide-toggle formControlName="is_recurring">Recorrente</mat-slide-toggle>
+          <mat-slide-toggle formControlName="is_card_refund" (change)="onCardRefundToggle()">Devolução Cartão</mat-slide-toggle>
         </div>
+
+        @if (form.get('is_card_refund')?.value) {
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Cartão de Crédito</mat-label>
+            <mat-select formControlName="credit_card">
+              @for (card of creditCards(); track card.id) {
+                <mat-option [value]="card.id">{{ card.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        }
 
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Observacoes</mat-label>
@@ -98,7 +111,7 @@ import { IncomeCategory, IncomeCreate } from '../../../../core/models';
     .full-width { width: 100%; }
     .row { display: flex; gap: 16px; }
     .half-width { flex: 1; }
-    .toggles { margin-bottom: 16px; }
+    .toggles { display: flex; gap: 24px; margin-bottom: 16px; }
     .form-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px; }
     .loading { display: flex; justify-content: center; padding: 48px; }
     .page-header h1 { margin: 0 0 24px; font-size: 1.5rem; }
@@ -109,9 +122,11 @@ export class IncomeForm implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly incomeService = inject(IncomeService);
+  private readonly financialCalendarService = inject(FinancialCalendarService);
   private readonly snackBar = inject(MatSnackBar);
 
   categories = signal<IncomeCategory[]>([]);
+  creditCards = signal<CreditCard[]>([]);
   isEditing = signal(false);
   loadingData = signal(true);
   saving = signal(false);
@@ -123,11 +138,14 @@ export class IncomeForm implements OnInit {
     date: [new Date(), Validators.required],
     category: [null],
     is_recurring: [false],
+    is_card_refund: [false],
+    credit_card: [null],
     notes: [''],
   });
 
   ngOnInit(): void {
     this.incomeService.listCategories().subscribe((cats) => this.categories.set(cats));
+    this.financialCalendarService.listCreditCards().subscribe((cards) => this.creditCards.set(cards));
 
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
@@ -141,6 +159,8 @@ export class IncomeForm implements OnInit {
             date: new Date(income.date + 'T00:00:00'),
             category: income.category,
             is_recurring: income.is_recurring,
+            is_card_refund: !!income.credit_card,
+            credit_card: income.credit_card,
             notes: income.notes,
           });
           this.loadingData.set(false);
@@ -152,6 +172,12 @@ export class IncomeForm implements OnInit {
       });
     } else {
       this.loadingData.set(false);
+    }
+  }
+
+  onCardRefundToggle(): void {
+    if (!this.form.get('is_card_refund')?.value) {
+      this.form.get('credit_card')?.setValue(null);
     }
   }
 
@@ -173,6 +199,7 @@ export class IncomeForm implements OnInit {
       amount: this.parseAmount(val.amount),
       date: format(val.date, 'yyyy-MM-dd'),
       category: val.category || null,
+      credit_card: val.is_card_refund ? (val.credit_card || null) : null,
       is_recurring: val.is_recurring || false,
       notes: val.notes || '',
     };

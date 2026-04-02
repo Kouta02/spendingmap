@@ -13,6 +13,7 @@ class IncomeCategorySerializer(serializers.ModelSerializer):
 class IncomeSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True, default=None)
     third_party_name = serializers.CharField(source='third_party.name', read_only=True, default=None)
+    credit_card_name = serializers.CharField(source='credit_card.name', read_only=True, default=None)
 
     class Meta:
         model = Income
@@ -20,6 +21,7 @@ class IncomeSerializer(serializers.ModelSerializer):
             'id', 'description', 'amount', 'date',
             'category', 'category_name',
             'third_party', 'third_party_name',
+            'credit_card', 'credit_card_name',
             'is_recurring', 'notes',
             'created_at', 'updated_at',
         ]

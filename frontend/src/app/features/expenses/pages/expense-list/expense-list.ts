@@ -18,7 +18,8 @@ import { PaymentTypeService } from '../../../../core/services/payment-type.servi
 import { ThirdPartyService } from '../../../../core/services/third-party.service';
 import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
 import { MonthStateService } from '../../../../core/services/month-state.service';
-import { Expense, ExpenseFilters, CategoryFlat, PaymentType, ThirdParty } from '../../../../core/models';
+import { IncomeService } from '../../../../core/services/income.service';
+import { Expense, ExpenseFilters, CategoryFlat, PaymentType, ThirdParty, Income } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 import {
   ConfirmDialog,
@@ -767,9 +768,11 @@ export class ExpenseList implements OnInit {
   private readonly thirdPartyService = inject(ThirdPartyService);
   private readonly financialCalendarService = inject(FinancialCalendarService);
   private readonly monthState = inject(MonthStateService);
+  private readonly incomeService = inject(IncomeService);
   private readonly dialog = inject(MatDialog);
 
   expenses = signal<Expense[]>([]);
+  cardRefunds = signal<Income[]>([]);
   categories = signal<CategoryFlat[]>([]);
   paymentTypes = signal<PaymentType[]>([]);
   thirdParties = signal<ThirdParty[]>([]);
@@ -1149,13 +1152,37 @@ export class ExpenseList implements OnInit {
       },
       error: () => this.loading.set(false),
     });
+
+    // Carregar devoluções de cartão do mês para abater do total
+    this.incomeService.list({ month: this.currentMonth() }).subscribe({
+      next: (incomes) => this.cardRefunds.set(incomes.filter(i => i.credit_card)),
+    });
   }
 
   totalMonth(): number {
-    return this.filteredExpenses().reduce(
+    const total = this.filteredExpenses().reduce(
       (sum, e) => sum + parseFloat(String(e.amount)),
       0
     );
+
+    // Subtrair devoluções de cartão quando filtrado por cartão
+    const refunds = this.cardRefunds();
+    if (refunds.length === 0) return total;
+
+    // Identificar cartões visíveis nos resultados filtrados
+    const visibleCards = new Set<string>();
+    for (const e of this.filteredExpenses()) {
+      if (e.credit_card) visibleCards.add(e.credit_card);
+    }
+
+    let refundTotal = 0;
+    for (const r of refunds) {
+      if (r.credit_card && visibleCards.has(r.credit_card)) {
+        refundTotal += parseFloat(String(r.amount));
+      }
+    }
+
+    return total - refundTotal;
   }
 
   prevMonth(): void {

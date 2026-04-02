@@ -41,6 +41,14 @@ class Income(models.Model):
         related_name='incomes',
         verbose_name='terceiro',
     )
+    credit_card = models.ForeignKey(
+        'financial_calendar.CreditCard',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='refund_incomes',
+        verbose_name='cartão de crédito (devolução)',
+    )
     financial_month = models.DateField(
         'mês financeiro',
         null=True,
