@@ -127,6 +127,7 @@ import { CategoryDialog, CategoryDialogData } from '../../../../shared/component
           <mat-slide-toggle
             formControlName="is_installment"
             (change)="onInstallmentToggle()"
+            [disabled]="isEditingInstallment()"
           >
             Parcelado
           </mat-slide-toggle>
@@ -134,6 +135,7 @@ import { CategoryDialog, CategoryDialogData } from '../../../../shared/component
           <mat-slide-toggle
             formControlName="is_recurring"
             (change)="onRecurringToggle()"
+            [disabled]="isEditingInstallment()"
           >
             Recorrente
           </mat-slide-toggle>
@@ -146,8 +148,16 @@ import { CategoryDialog, CategoryDialogData } from '../../../../shared/component
           </mat-slide-toggle>
         </div>
 
-        <!-- Número de parcelas (condicional) -->
-        @if (form.get('is_installment')?.value) {
+        <!-- Parcela existente (edição) -->
+        @if (isEditingInstallment()) {
+          <p class="info-text">
+            <mat-icon inline>info</mat-icon>
+            Parcela {{ editingInstallmentCurrent() }}/{{ editingInstallmentTotal() }}
+          </p>
+        }
+
+        <!-- Número de parcelas (criação) -->
+        @if (form.get('is_installment')?.value && !isEditingInstallment()) {
           <div class="row">
             <mat-form-field appearance="outline" class="half-width">
               <mat-label>Total de parcelas</mat-label>
@@ -361,6 +371,9 @@ export class ExpenseForm implements OnInit {
     });
   });
   isEditing = signal(false);
+  isEditingInstallment = signal(false);
+  editingInstallmentCurrent = signal<number | null>(null);
+  editingInstallmentTotal = signal<number | null>(null);
   loadingData = signal(true);
   saving = signal(false);
 
@@ -415,6 +428,11 @@ export class ExpenseForm implements OnInit {
             notes: expense.notes,
           });
           this.originalBoletoStatus = expense.boleto_status;
+          if (expense.is_installment && expense.installment_current) {
+            this.isEditingInstallment.set(true);
+            this.editingInstallmentCurrent.set(expense.installment_current);
+            this.editingInstallmentTotal.set(expense.installment_total);
+          }
           if (expense.credit_card) {
             this.showCreditCardField.set(true);
           }
@@ -457,6 +475,7 @@ export class ExpenseForm implements OnInit {
       this.form.get('installment_start')?.setValue(1);
     }
     this.form.get('installment_total')?.updateValueAndValidity();
+    this.updateDueDayVisibility();
   }
 
   onRecurringToggle(): void {
@@ -480,8 +499,9 @@ export class ExpenseForm implements OnInit {
     const pt = this.paymentTypes().find((p) => p.id === ptId);
     const isBoleto = pt?.name?.toLowerCase() === 'boleto';
     const isRecurring = this.form.get('is_recurring')?.value;
-    this.showDueDayField.set(!!isBoleto && !!isRecurring);
-    if (!isBoleto || !isRecurring) {
+    const isInstallment = this.form.get('is_installment')?.value;
+    this.showDueDayField.set(!!isBoleto && (!!isRecurring || !!isInstallment));
+    if (!isBoleto || (!isRecurring && !isInstallment)) {
       this.form.get('due_day')?.setValue(null);
     }
   }

@@ -294,7 +294,7 @@ def boleto_alerts(request):
     """
     today = date.today()
 
-    # Boletos pendentes (recorrentes com due_day e status pendente)
+    # Boletos pendentes (recorrentes ou parcelados com due_day e status pendente)
     pending = Expense.objects.filter(
         boleto_status='pending',
     ).select_related('category', 'third_party', 'payment_type')
