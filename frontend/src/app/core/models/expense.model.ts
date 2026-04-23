@@ -19,6 +19,7 @@ export interface Expense {
   is_recurring: boolean;
   from_paycheck: boolean;
   due_day: number | null;
+  due_date: string | null;
   boleto_status: 'pending' | 'paid' | null;
   is_predicted: boolean;
   notes: string;

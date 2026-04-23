@@ -7,7 +7,6 @@ Envia notificação quando:
 - Vence hoje
 - Está vencido (todo dia até ser marcado como pago)
 """
-import calendar
 import urllib.request
 import urllib.parse
 import json
@@ -17,6 +16,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from apps.expenses.models import Expense
+from apps.financial_calendar.services import get_boleto_due_date
 
 
 class Command(BaseCommand):
@@ -45,10 +45,9 @@ class Command(BaseCommand):
         due_3_days = []
 
         for exp in pending:
-            exp_year = exp.date.year
-            exp_month = exp.date.month
-            max_day = calendar.monthrange(exp_year, exp_month)[1]
-            due_date = date(exp_year, exp_month, min(exp.due_day, max_day))
+            due_date = get_boleto_due_date(exp)
+            if not due_date:
+                continue
 
             days_until = (due_date - today).days
 

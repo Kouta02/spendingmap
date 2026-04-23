@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from apps.financial_calendar.services import (
+    get_boleto_due_date,
     get_financial_month_for_date,
     get_financial_month_range,
 )
@@ -301,14 +302,9 @@ def boleto_alerts(request):
 
     alerts = []
     for exp in pending:
-        if not exp.due_day:
+        due_date = get_boleto_due_date(exp)
+        if not due_date:
             continue
-
-        # Calcular data de vencimento no mês corrente da despesa
-        exp_year = exp.date.year
-        exp_month = exp.date.month
-        max_day = calendar.monthrange(exp_year, exp_month)[1]
-        due_date = date(exp_year, exp_month, min(exp.due_day, max_day))
 
         days_until = (due_date - today).days
 

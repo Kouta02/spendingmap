@@ -128,6 +128,38 @@ def get_financial_month_range(year, month):
     return date(year, month, 1), date(year, month, max_day)
 
 
+def get_boleto_due_date(expense):
+    """
+    Calcula a data real de vencimento de um boleto com base no mês financeiro.
+
+    O vencimento é o dia `due_day` que cai dentro do intervalo
+    [start, end] do mês financeiro da despesa.
+
+    Retorna None se a despesa não tiver due_day.
+    """
+    if not expense.due_day:
+        return None
+
+    fm = expense.financial_month or get_financial_month_for_date(expense.date)
+    start, end = get_financial_month_range(fm.year, fm.month)
+
+    candidates = []
+    # Candidato 1: due_day no mês calendário de start
+    max_d = calendar.monthrange(start.year, start.month)[1]
+    candidates.append(date(start.year, start.month, min(expense.due_day, max_d)))
+    # Candidato 2: due_day no mês calendário de end (se diferente)
+    if (end.year, end.month) != (start.year, start.month):
+        max_d = calendar.monthrange(end.year, end.month)[1]
+        candidates.append(date(end.year, end.month, min(expense.due_day, max_d)))
+
+    for c in candidates:
+        if start <= c <= end:
+            return c
+
+    # Fallback improvável: retornar o candidato mais próximo do range
+    return candidates[0]
+
+
 def get_credit_card_financial_month(purchase_date, credit_card):
     """
     Determina o mês financeiro de uma compra no cartão de crédito.

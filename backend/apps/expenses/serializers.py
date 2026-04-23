@@ -5,6 +5,7 @@ from dateutil.relativedelta import relativedelta
 from rest_framework import serializers
 
 from apps.financial_calendar.services import (
+    get_boleto_due_date,
     get_credit_card_financial_month,
     get_financial_month_for_date,
 )
@@ -19,6 +20,11 @@ class ExpenseSerializer(serializers.ModelSerializer):
     credit_card_name = serializers.CharField(source='credit_card.name', read_only=True, default=None)
     is_predicted = serializers.BooleanField(read_only=True, default=False)
     installment_start = serializers.IntegerField(write_only=True, required=False, min_value=1)
+    due_date = serializers.SerializerMethodField()
+
+    def get_due_date(self, obj):
+        d = get_boleto_due_date(obj)
+        return d.isoformat() if d else None
 
     class Meta:
         model = Expense
@@ -32,7 +38,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'is_installment', 'installment_current', 'installment_total', 'installment_group_id',
             'installment_start',
             'is_recurring', 'from_paycheck',
-            'due_day', 'boleto_status',
+            'due_day', 'due_date', 'boleto_status',
             'notes', 'is_predicted',
             'created_at', 'updated_at',
         ]

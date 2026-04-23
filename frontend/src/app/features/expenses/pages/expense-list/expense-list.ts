@@ -1203,12 +1203,11 @@ export class ExpenseList implements OnInit {
   }
 
   getBoletoAlert(expense: Expense): string | null {
-    if (!expense.due_day || expense.boleto_status !== 'pending') return null;
+    if (!expense.due_date || expense.boleto_status !== 'pending') return null;
     const today = new Date();
-    const [year, month] = expense.date.split('-').map(Number);
-    const maxDay = new Date(year, month, 0).getDate();
-    const dueDay = Math.min(expense.due_day, maxDay);
-    const dueDate = new Date(year, month - 1, dueDay);
+    today.setHours(0, 0, 0, 0);
+    const [y, m, d] = expense.due_date.split('-').map(Number);
+    const dueDate = new Date(y, m - 1, d);
     const diffTime = dueDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -1220,10 +1219,9 @@ export class ExpenseList implements OnInit {
   }
 
   openMarkPaid(expense: Expense): void {
-    const [year, month] = expense.date.split('-').map(Number);
-    const maxDay = new Date(year, month, 0).getDate();
-    const dueDay = Math.min(expense.due_day || 1, maxDay);
-    const dueDate = new Date(year, month - 1, dueDay);
+    const dueIso = expense.due_date ?? expense.date;
+    const [y, m, d] = dueIso.split('-').map(Number);
+    const dueDate = new Date(y, m - 1, d);
 
     const ref = this.dialog.open(MarkPaidDialog, {
       width: '400px',
