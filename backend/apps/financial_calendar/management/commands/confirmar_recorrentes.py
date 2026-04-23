@@ -55,7 +55,7 @@ class Command(BaseCommand):
             latest = (
                 Expense.objects
                 .filter(is_recurring=True, description=desc)
-                .select_related('category', 'bank', 'payment_type', 'credit_card')
+                .select_related('category', 'payment_type', 'credit_card')
                 .order_by('-financial_month')
                 .first()
             )
@@ -84,7 +84,6 @@ class Command(BaseCommand):
                 date=target_date,
                 category=latest.category,
                 payment_type=latest.payment_type,
-                bank=latest.bank,
                 credit_card=latest.credit_card,
                 financial_month=current_fm,
                 is_recurring=True,
