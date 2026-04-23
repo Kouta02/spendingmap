@@ -49,6 +49,7 @@ coverage/
 
 # === Others ===
 CLAUDE.md
+AGENTS.md
 docs/*.md
 docs/spendingmap_data.json
 setup-desenvolvimento-arch.md
