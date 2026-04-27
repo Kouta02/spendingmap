@@ -48,6 +48,7 @@ htmlcov/
 coverage/
 
 # === Others ===
+*.dump
 CLAUDE.md
 AGENTS.md
 docs/*.md
