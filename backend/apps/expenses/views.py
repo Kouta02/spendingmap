@@ -62,9 +62,13 @@ class ExpenseViewSet(ModelViewSet):
         virtual = []
 
         # Descrições únicas de recorrentes
+        # .order_by() vazio é necessário: o Meta.ordering injeta colunas no
+        # ORDER BY, e no Postgres DISTINCT considera essas colunas, retornando
+        # descrições duplicadas se as datas variam.
         descriptions = (
             Expense.objects
             .filter(is_recurring=True)
+            .order_by()
             .values_list('description', flat=True)
             .distinct()
         )
@@ -93,6 +97,10 @@ class ExpenseViewSet(ModelViewSet):
             # Só gerar para meses posteriores ao último registro
             latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
             if target_fm <= latest_fm:
+                continue
+
+            # Recorrência foi encerrada a partir deste mês?
+            if latest.recurrence_ends_at and target_fm >= latest.recurrence_ends_at:
                 continue
 
             # Calcular data dentro do período financeiro alvo
@@ -273,6 +281,54 @@ class ExpenseViewSet(ModelViewSet):
         count = qs.count()
         qs.delete()
         return Response({'deleted': count})
+
+    @action(detail=False, methods=['post'], url_path='stop-recurring')
+    def stop_recurring(self, request):
+        """
+        Encerra a geração de uma despesa recorrente a partir do mês informado.
+        Body: {"description": "...", "financial_month": "YYYY-MM-DD"}
+        Marca o registro real mais recente da série com `recurrence_ends_at`,
+        impedindo previsões e a criação automática pelo cron a partir desse mês.
+        """
+        description = request.data.get('description')
+        fm_str = request.data.get('financial_month')
+
+        if not description or not fm_str:
+            return Response(
+                {'detail': 'Campos "description" e "financial_month" são obrigatórios.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            year, month, day = map(int, fm_str.split('-'))
+            financial_month = date(year, month, day)
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': 'Formato inválido para financial_month (esperado YYYY-MM-DD).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        latest = (
+            Expense.objects
+            .filter(is_recurring=True, description=description)
+            .order_by('-financial_month')
+            .first()
+        )
+
+        if not latest:
+            return Response(
+                {'detail': 'Despesa recorrente não encontrada.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        latest.recurrence_ends_at = financial_month
+        latest.save(update_fields=['recurrence_ends_at'])
+
+        return Response({
+            'description': description,
+            'recurrence_ends_at': financial_month.isoformat(),
+            'updated_id': str(latest.id),
+        })
 
     @action(detail=True, methods=['post'], url_path='mark-paid')
     def mark_paid(self, request, pk=None):

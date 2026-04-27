@@ -74,6 +74,7 @@ def _get_virtual_recurring_totals(target_fm):
     descriptions = (
         Expense.objects
         .filter(is_recurring=True)
+        .order_by()
         .values_list('description', flat=True)
         .distinct()
     )
@@ -96,6 +97,9 @@ def _get_virtual_recurring_totals(target_fm):
 
         latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
         if target_fm <= latest_fm:
+            continue
+
+        if latest.recurrence_ends_at and target_fm >= latest.recurrence_ends_at:
             continue
 
         if latest.from_paycheck:
@@ -275,7 +279,9 @@ def expense_details(request):
                     is_recurring=True, description=exp.description, financial_month=ref_date,
                 ).exists():
                     latest_fm = exp.financial_month or get_financial_month_for_date(exp.date)
-                    if ref_date > latest_fm:
+                    if ref_date > latest_fm and not (
+                        exp.recurrence_ends_at and ref_date >= exp.recurrence_ends_at
+                    ):
                         descontos.append({
                             'description': exp.description,
                             'amount': str(exp.amount),
@@ -300,6 +306,7 @@ def expense_details(request):
         descriptions = (
             Expense.objects
             .filter(is_recurring=True)
+            .order_by()
             .values_list('description', flat=True)
             .distinct()
         )
@@ -320,6 +327,8 @@ def expense_details(request):
                 continue
             latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
             if ref_date <= latest_fm:
+                continue
+            if latest.recurrence_ends_at and ref_date >= latest.recurrence_ends_at:
                 continue
             if latest.from_paycheck:
                 continue
@@ -473,6 +482,7 @@ def expenses_by_category(request):
         descriptions = (
             Expense.objects
             .filter(is_recurring=True)
+            .order_by()
             .values_list('description', flat=True)
             .distinct()
         )
@@ -494,6 +504,8 @@ def expenses_by_category(request):
 
             latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
             if ref_date <= latest_fm:
+                continue
+            if latest.recurrence_ends_at and ref_date >= latest.recurrence_ends_at:
                 continue
             if latest.from_paycheck:
                 continue
@@ -605,6 +617,7 @@ def expenses_by_credit_card(request):
         descriptions = (
             Expense.objects
             .filter(is_recurring=True, credit_card__isnull=False)
+            .order_by()
             .values_list('description', flat=True)
             .distinct()
         )
@@ -626,6 +639,8 @@ def expenses_by_credit_card(request):
 
             latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
             if ref_date <= latest_fm:
+                continue
+            if latest.recurrence_ends_at and ref_date >= latest.recurrence_ends_at:
                 continue
             if latest.from_paycheck:
                 continue
@@ -708,6 +723,7 @@ def expenses_by_third_party(request):
         descriptions = (
             Expense.objects
             .filter(is_recurring=True, third_party__isnull=False)
+            .order_by()
             .values_list('description', flat=True)
             .distinct()
         )
@@ -729,6 +745,8 @@ def expenses_by_third_party(request):
 
             latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
             if ref_date <= latest_fm:
+                continue
+            if latest.recurrence_ends_at and ref_date >= latest.recurrence_ends_at:
                 continue
             if latest.from_paycheck:
                 continue

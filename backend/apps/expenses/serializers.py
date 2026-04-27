@@ -37,7 +37,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'financial_month',
             'is_installment', 'installment_current', 'installment_total', 'installment_group_id',
             'installment_start',
-            'is_recurring', 'from_paycheck',
+            'is_recurring', 'recurrence_ends_at', 'from_paycheck',
             'due_day', 'due_date', 'boleto_status',
             'notes', 'is_predicted',
             'created_at', 'updated_at',

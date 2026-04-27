@@ -52,7 +52,13 @@ import { CategoryDialog, CategoryDialogData } from '../../../../shared/component
   providers: [provideNativeDateAdapter()],
   template: `
     <div class="page-header">
-      <h1>{{ isEditing() ? 'Editar Despesa' : 'Nova Despesa' }}</h1>
+      <h1>{{ isEditing() ? 'Editar Despesa' : (prefilledFromPredicted() ? 'Editar Despesa Prevista' : 'Nova Despesa') }}</h1>
+      @if (prefilledFromPredicted()) {
+        <p class="info-text">
+          <mat-icon inline>info</mat-icon>
+          Salvar criará o registro real desta recorrente para o mês previsto. Os meses seguintes passam a usar o novo valor.
+        </p>
+      }
     </div>
 
     @if (loadingData()) {
@@ -379,6 +385,7 @@ export class ExpenseForm implements OnInit {
 
   private expenseId = '';
   private originalBoletoStatus: string | null = null;
+  prefilledFromPredicted = signal(false);
 
   form: FormGroup = this.fb.group({
     description: ['', Validators.required],
@@ -447,8 +454,33 @@ export class ExpenseForm implements OnInit {
         },
       });
     } else {
+      const prefill = (history.state && history.state.prefillFromPredicted) || null;
+      if (prefill) {
+        this.applyPrefill(prefill);
+      }
       this.loadingData.set(false);
     }
+  }
+
+  private applyPrefill(prefill: any): void {
+    this.prefilledFromPredicted.set(true);
+    this.form.patchValue({
+      description: prefill.description ?? '',
+      amount: prefill.amount ?? '',
+      date: prefill.date ? new Date(prefill.date + 'T00:00:00') : new Date(),
+      payment_type: prefill.payment_type ?? null,
+      credit_card: prefill.credit_card ?? null,
+      is_recurring: !!prefill.is_recurring,
+      has_third_party: !!prefill.third_party,
+      third_party: prefill.third_party ?? null,
+      due_day: prefill.due_day ?? null,
+      category: prefill.category ?? null,
+      notes: prefill.notes ?? '',
+    });
+    if (prefill.credit_card) {
+      this.showCreditCardField.set(true);
+    }
+    this.updateDueDayVisibility();
   }
 
   onPaymentTypeChange(): void {
@@ -561,6 +593,9 @@ export class ExpenseForm implements OnInit {
       next: () => {
         this.saving.set(false);
         if (this.isEditing()) {
+          this.snackBar.open('Despesa atualizada!', 'OK', { duration: 3000 });
+          this.router.navigate(['/expenses']);
+        } else if (this.prefilledFromPredicted()) {
           this.snackBar.open('Despesa atualizada!', 'OK', { duration: 3000 });
           this.router.navigate(['/expenses']);
         } else {

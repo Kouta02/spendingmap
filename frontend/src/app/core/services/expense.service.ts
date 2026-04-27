@@ -43,6 +43,17 @@ export class ExpenseService {
     return this.http.delete<{ deleted: number }>(`${this.baseUrl}${id}/delete-installments/`, { params });
   }
 
+  stopRecurring(description: string, financialMonth: string): Observable<{
+    description: string;
+    recurrence_ends_at: string;
+    updated_id: string;
+  }> {
+    return this.http.post<{ description: string; recurrence_ends_at: string; updated_id: string }>(
+      `${this.baseUrl}stop-recurring/`,
+      { description, financial_month: financialMonth },
+    );
+  }
+
   markPaid(id: string, amount?: number): Observable<Expense> {
     const body: Record<string, unknown> = {};
     if (amount !== undefined) body['amount'] = amount;

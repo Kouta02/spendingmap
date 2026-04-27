@@ -33,9 +33,12 @@ class Command(BaseCommand):
         self.stdout.write(f'Mês financeiro atual: {current_fm}')
 
         # Buscar descrições únicas de despesas recorrentes
+        # .order_by() vazio neutraliza o Meta.ordering — sem isso o DISTINCT
+        # no Postgres considera as colunas do ORDER BY e retorna duplicatas.
         descriptions = (
             Expense.objects
             .filter(is_recurring=True)
+            .order_by()
             .values_list('description', flat=True)
             .distinct()
         )
@@ -66,6 +69,13 @@ class Command(BaseCommand):
             # Só gerar se o mês atual é posterior ao último registro
             latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
             if current_fm <= latest_fm:
+                continue
+
+            # Recorrência foi encerrada a partir deste mês?
+            if latest.recurrence_ends_at and current_fm >= latest.recurrence_ends_at:
+                self.stdout.write(
+                    f'  Pulada (encerrada): "{desc}" — recurrence_ends_at={latest.recurrence_ends_at}'
+                )
                 continue
 
             # Calcular data dentro do período financeiro atual

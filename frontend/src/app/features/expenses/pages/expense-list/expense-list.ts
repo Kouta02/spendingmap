@@ -1,5 +1,5 @@
 import { Component, OnInit, HostListener, inject, signal, computed } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
@@ -14,12 +14,10 @@ import { MatDialog } from '@angular/material/dialog';
 import { DatePipe } from '@angular/common';
 import { ExpenseService } from '../../../../core/services/expense.service';
 import { CategoryService } from '../../../../core/services/category.service';
-import { PaymentTypeService } from '../../../../core/services/payment-type.service';
 import { ThirdPartyService } from '../../../../core/services/third-party.service';
-import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
 import { MonthStateService } from '../../../../core/services/month-state.service';
 import { IncomeService } from '../../../../core/services/income.service';
-import { Expense, ExpenseFilters, CategoryFlat, PaymentType, ThirdParty, Income } from '../../../../core/models';
+import { Expense, ExpenseFilters, CategoryFlat, ThirdParty, Income } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 import {
   ConfirmDialog,
@@ -104,22 +102,21 @@ interface ColumnFilter {
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="filter-field">
-        <mat-label>Cartão</mat-label>
-        <mat-select [(ngModel)]="filterCreditCard" (selectionChange)="loadExpenses()">
-          <mat-option value="">Todos</mat-option>
-          @for (card of creditCards(); track card.id) {
-            <mat-option [value]="card.id">{{ card.name }}</mat-option>
-          }
+        <mat-label>Recorrência</mat-label>
+        <mat-select [ngModel]="filterRecurrence()" (ngModelChange)="filterRecurrence.set($event)">
+          <mat-option value="">Todas</mat-option>
+          <mat-option value="recurring">Recorrentes</mat-option>
+          <mat-option value="installment">Parceladas</mat-option>
+          <mat-option value="both">Ambas</mat-option>
+          <mat-option value="none">Nenhuma</mat-option>
         </mat-select>
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="filter-field">
-        <mat-label>Tipo Pagamento</mat-label>
-        <mat-select [(ngModel)]="filterPaymentType" (selectionChange)="loadExpenses()">
-          <mat-option value="">Todos</mat-option>
-          @for (pt of paymentTypes(); track pt.id) {
-            <mat-option [value]="pt.id">{{ pt.name }}</mat-option>
-          }
+        <mat-label>Previstas</mat-label>
+        <mat-select [ngModel]="filterPredicted()" (ngModelChange)="filterPredicted.set($event)">
+          <mat-option value="">Todas</mat-option>
+          <mat-option value="predicted">Previstas</mat-option>
         </mat-select>
       </mat-form-field>
 
@@ -340,16 +337,16 @@ interface ColumnFilter {
                 <button mat-icon-button (click)="toggleGroup(e._groupKey)" [matTooltip]="isGroupExpanded(e._groupKey) ? 'Recolher' : 'Expandir'">
                   <mat-icon>{{ isGroupExpanded(e._groupKey) ? 'remove' : 'add' }}</mat-icon>
                 </button>
-              } @else if (!e.is_predicted) {
-                @if (e.boleto_status === 'pending') {
+              } @else if (canEditOrDelete(e)) {
+                @if (e.boleto_status === 'pending' && !e.is_predicted) {
                   <button mat-icon-button (click)="openMarkPaid(e)" matTooltip="Marcar como pago" color="primary">
                     <mat-icon>paid</mat-icon>
                   </button>
                 }
-                <a mat-icon-button [routerLink]="['/expenses', e.id, 'edit']" matTooltip="Editar">
+                <button mat-icon-button (click)="editExpense(e)" [matTooltip]="e.is_predicted ? 'Editar (cria registro com novo valor)' : 'Editar'">
                   <mat-icon>edit</mat-icon>
-                </a>
-                <button mat-icon-button (click)="confirmDelete(e)" matTooltip="Excluir" color="warn">
+                </button>
+                <button mat-icon-button (click)="confirmDelete(e)" [matTooltip]="e.is_predicted ? 'Encerrar recorrência a partir deste mês' : 'Excluir'" color="warn">
                   <mat-icon>delete</mat-icon>
                 </button>
               }
@@ -764,19 +761,16 @@ interface ColumnFilter {
 export class ExpenseList implements OnInit {
   private readonly expenseService = inject(ExpenseService);
   private readonly categoryService = inject(CategoryService);
-  private readonly paymentTypeService = inject(PaymentTypeService);
   private readonly thirdPartyService = inject(ThirdPartyService);
-  private readonly financialCalendarService = inject(FinancialCalendarService);
   private readonly monthState = inject(MonthStateService);
   private readonly incomeService = inject(IncomeService);
   private readonly dialog = inject(MatDialog);
+  private readonly router = inject(Router);
 
   expenses = signal<Expense[]>([]);
   cardRefunds = signal<Income[]>([]);
   categories = signal<CategoryFlat[]>([]);
-  paymentTypes = signal<PaymentType[]>([]);
   thirdParties = signal<ThirdParty[]>([]);
-  creditCards = signal<{ id: string; name: string }[]>([]);
 
   categoryGroups = computed(() => {
     const cats = this.categories();
@@ -792,8 +786,8 @@ export class ExpenseList implements OnInit {
 
   filterCategory = '';
   filterThirdParty = '';
-  filterCreditCard = '';
-  filterPaymentType = '';
+  filterRecurrence = signal<string>('');
+  filterPredicted = signal<string>('');
   groupBy = signal('');
   expandedGroups = signal<Set<string>>(new Set());
 
@@ -855,6 +849,17 @@ export class ExpenseList implements OnInit {
 
   filteredExpenses = computed(() => {
     let result = this.expenses();
+
+    const rec = this.filterRecurrence();
+    if (rec === 'recurring') result = result.filter((e) => e.is_recurring || e.from_paycheck);
+    else if (rec === 'installment') result = result.filter((e) => e.is_installment);
+    else if (rec === 'both') result = result.filter((e) => e.is_recurring || e.is_installment || e.from_paycheck);
+    else if (rec === 'none') result = result.filter((e) => !e.is_recurring && !e.is_installment && !e.from_paycheck);
+
+    if (this.filterPredicted() === 'predicted') {
+      result = result.filter((e) => e.is_predicted);
+    }
+
     const filters = this.columnFilters();
 
     for (const [col, f] of Object.entries(filters)) {
@@ -1121,11 +1126,7 @@ export class ExpenseList implements OnInit {
 
   ngOnInit(): void {
     this.categoryService.flat().subscribe((cats) => this.categories.set(cats));
-    this.paymentTypeService.list().subscribe((pts) => this.paymentTypes.set(pts));
     this.thirdPartyService.list().subscribe((tps) => this.thirdParties.set(tps));
-    this.financialCalendarService.listCreditCards().subscribe((cards) =>
-      this.creditCards.set(cards.map((c) => ({ id: c.id, name: c.name })))
-    );
 
     this.monthState.init().then(() => this.loadExpenses());
   }
@@ -1142,8 +1143,6 @@ export class ExpenseList implements OnInit {
     };
     if (this.filterCategory) filters.category = this.filterCategory;
     if (this.filterThirdParty) filters.third_party = this.filterThirdParty;
-    if (this.filterCreditCard) filters.credit_card = this.filterCreditCard;
-    if (this.filterPaymentType) filters.payment_type = this.filterPaymentType;
 
     this.expenseService.list(filters).subscribe({
       next: (expenses) => {
@@ -1241,7 +1240,40 @@ export class ExpenseList implements OnInit {
     });
   }
 
+  canEditOrDelete(expense: Expense): boolean {
+    if (!expense.is_predicted) return true;
+    // Previstas: liberadas apenas para recorrentes (não contracheque)
+    return expense.is_recurring && !expense.from_paycheck;
+  }
+
+  editExpense(expense: Expense): void {
+    if (expense.is_predicted && expense.is_recurring) {
+      this.router.navigate(['/expenses/new'], {
+        state: {
+          prefillFromPredicted: {
+            description: expense.description,
+            amount: expense.amount,
+            date: expense.date,
+            category: expense.category,
+            payment_type: expense.payment_type,
+            credit_card: expense.credit_card,
+            third_party: expense.third_party,
+            due_day: expense.due_day,
+            notes: expense.notes,
+            is_recurring: true,
+          },
+        },
+      });
+      return;
+    }
+    this.router.navigate(['/expenses', expense.id, 'edit']);
+  }
+
   confirmDelete(expense: Expense): void {
+    if (expense.is_predicted && expense.is_recurring) {
+      this.confirmStopRecurring(expense);
+      return;
+    }
     if (expense.is_installment && expense.installment_group_id) {
       this.confirmDeleteInstallment(expense);
       return;
@@ -1258,6 +1290,32 @@ export class ExpenseList implements OnInit {
     ref.afterClosed().subscribe((confirmed) => {
       if (confirmed) {
         this.expenseService.delete(expense.id).subscribe(() => {
+          this.loadExpenses();
+        });
+      }
+    });
+  }
+
+  private confirmStopRecurring(expense: Expense): void {
+    const fm = expense.financial_month;
+    if (!fm) return;
+    const [y, m] = fm.split('-').map(Number);
+    const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('pt-BR', {
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const ref = this.dialog.open(ConfirmDialog, {
+      data: {
+        title: 'Encerrar Recorrência',
+        message: `Deseja encerrar a despesa recorrente "${expense.description}" a partir de ${monthLabel}? Os meses anteriores serão preservados.`,
+        confirmText: 'Encerrar',
+      } as ConfirmDialogData,
+    });
+
+    ref.afterClosed().subscribe((confirmed) => {
+      if (confirmed) {
+        this.expenseService.stopRecurring(expense.description, fm).subscribe(() => {
           this.loadExpenses();
         });
       }

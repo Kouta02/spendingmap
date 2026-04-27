@@ -57,6 +57,13 @@ class Expense(models.Model):
         help_text='Primeiro dia do mês financeiro (calculado automaticamente)',
     )
     is_recurring = models.BooleanField('é recorrente', default=False)
+    recurrence_ends_at = models.DateField(
+        'recorrência termina em',
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='Mês financeiro (1º dia) a partir do qual esta recorrente para de ser gerada',
+    )
     from_paycheck = models.BooleanField('do contracheque', default=False)
     due_day = models.PositiveIntegerField(
         'dia de vencimento',
