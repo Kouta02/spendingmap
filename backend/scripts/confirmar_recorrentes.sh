@@ -10,5 +10,8 @@ DJANGO_SETTINGS_MODULE=config.settings.production python manage.py confirmar_rec
 # Gerar contracheque do mês financeiro atual (se ainda não existir)
 DJANGO_SETTINGS_MODULE=config.settings.production python manage.py gerar_contracheque >> /var/log/spendingmap-contracheque.log 2>&1
 
+# Criar receita "Saldo anterior" no FM atual (idempotente)
+DJANGO_SETTINGS_MODULE=config.settings.production python manage.py criar_saldo_anterior >> /var/log/spendingmap-saldo-anterior.log 2>&1
+
 # Enviar alertas de boletos via Telegram
 DJANGO_SETTINGS_MODULE=config.settings.production python manage.py alertar_boletos_telegram >> /var/log/spendingmap-telegram.log 2>&1
