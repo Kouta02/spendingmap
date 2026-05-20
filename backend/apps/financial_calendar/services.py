@@ -11,6 +11,8 @@ Regras:
 import calendar
 from datetime import date, timedelta
 
+from dateutil.relativedelta import relativedelta
+
 
 def get_payment_dates_map(year):
     """Retorna dict {month: payment_day} para o ano, incluindo dez do ano anterior."""
@@ -207,3 +209,33 @@ def get_credit_card_financial_month(purchase_date, credit_card):
 
     # Encontrar o mês financeiro que contém a data de vencimento
     return get_financial_month_for_date(due_date)
+
+
+def get_recurring_next_date(latest, target_fm):
+    """
+    Calcula a data alvo da próxima ocorrência de uma despesa recorrente
+    no mês financeiro `target_fm`.
+
+    - Cartão de crédito: avança o calendário a partir de `latest.date`
+      preservando o dia da compra. Como o ciclo do cartão se repete
+      mês a mês, somar N meses na data preserva o mapeamento para o FM
+      seguinte (ex.: compra 15/04 com FM=maio → 15/05 com FM=junho).
+      `relativedelta` ajusta automaticamente meses curtos (31/01 → 28/02).
+
+    - Demais tipos (boleto, débito, pix, dinheiro): usa `due_day`
+      (ou `latest.date.day` como fallback) e força para dentro do range
+      [start, end] do FM alvo. Se cair fora do range, usa `start`.
+    """
+    latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
+    months_diff = (target_fm.year - latest_fm.year) * 12 + (target_fm.month - latest_fm.month)
+
+    if latest.credit_card_id:
+        return latest.date + relativedelta(months=months_diff)
+
+    start, end = get_financial_month_range(target_fm.year, target_fm.month)
+    due_day = latest.due_day or latest.date.day
+    max_day = calendar.monthrange(start.year, start.month)[1]
+    target_date = date(start.year, start.month, min(due_day, max_day))
+    if not (start <= target_date <= end):
+        target_date = start
+    return target_date

@@ -1,4 +1,3 @@
-import calendar
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -12,6 +11,7 @@ from apps.financial_calendar.services import (
     get_boleto_due_date,
     get_financial_month_for_date,
     get_financial_month_range,
+    get_recurring_next_date,
 )
 
 from .filters import ExpenseFilter
@@ -103,13 +103,8 @@ class ExpenseViewSet(ModelViewSet):
             if latest.recurrence_ends_at and target_fm >= latest.recurrence_ends_at:
                 continue
 
-            # Calcular data dentro do período financeiro alvo
-            start, end = get_financial_month_range(target_fm.year, target_fm.month)
-            due_day = latest.due_day or latest.date.day
-            max_day = calendar.monthrange(start.year, start.month)[1]
-            target_date = date(start.year, start.month, min(due_day, max_day))
-            if not (start <= target_date <= end):
-                target_date = start
+            # Calcular data alvo (cartão usa ciclo do calendário; demais usam range do FM)
+            target_date = get_recurring_next_date(latest, target_fm)
 
             is_boleto = latest.payment_type and latest.payment_type.name.lower() == 'boleto'
 

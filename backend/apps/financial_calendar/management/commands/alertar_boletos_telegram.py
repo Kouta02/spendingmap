@@ -6,27 +6,101 @@ Envia notificação quando:
 - Faltam 3 dias para o vencimento
 - Vence hoje
 - Está vencido (todo dia até ser marcado como pago)
+
+Considera tanto boletos reais (`boleto_status='pending'`) quanto boletos
+previstos — ocorrências recorrentes ainda não materializadas no banco
+cujo vencimento cai dentro da janela de alerta.
 """
 import urllib.request
 import urllib.parse
 import json
-from datetime import date
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from apps.expenses.models import Expense
-from apps.financial_calendar.services import get_boleto_due_date
+from apps.financial_calendar.services import (
+    get_boleto_due_date,
+    get_financial_month_for_date,
+    get_recurring_next_date,
+)
+
+
+def _build_predicted_boletos(today):
+    """
+    Retorna lista de boletos previstos (recorrentes não materializados) para
+    os meses financeiros que tocam a janela de alerta [today, today+3].
+
+    Cada item é uma instância Expense em memória (não salva), preenchida o
+    suficiente para `get_boleto_due_date` funcionar e para a mensagem ser
+    montada (description, amount, due_day, financial_month, date).
+    """
+    fm_today = get_financial_month_for_date(today)
+    fm_window = get_financial_month_for_date(today + timedelta(days=3))
+    target_fms = {fm_today, fm_window}
+
+    descriptions = (
+        Expense.objects
+        .filter(is_recurring=True)
+        .order_by()
+        .values_list('description', flat=True)
+        .distinct()
+    )
+
+    predicted = []
+    for desc in descriptions:
+        latest = (
+            Expense.objects
+            .filter(is_recurring=True, description=desc)
+            .select_related('payment_type')
+            .order_by('-financial_month')
+            .first()
+        )
+        if not latest or not latest.due_day:
+            continue
+        if not (latest.payment_type and latest.payment_type.name.lower() == 'boleto'):
+            continue
+
+        latest_fm = latest.financial_month or get_financial_month_for_date(latest.date)
+
+        for target_fm in target_fms:
+            if target_fm <= latest_fm:
+                continue
+            if latest.recurrence_ends_at and target_fm >= latest.recurrence_ends_at:
+                continue
+            if Expense.objects.filter(
+                is_recurring=True, description=desc, financial_month=target_fm,
+            ).exists():
+                continue
+
+            predicted.append(Expense(
+                description=latest.description,
+                amount=latest.amount,
+                due_day=latest.due_day,
+                financial_month=target_fm,
+                date=get_recurring_next_date(latest, target_fm),
+            ))
+
+    return predicted
 
 
 class Command(BaseCommand):
-    help = 'Envia alertas de boletos pendentes via Telegram.'
+    help = 'Envia alertas de boletos pendentes via Telegram (inclui previstos).'
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--dry-run',
+            action='store_true',
+            help='Mostra a mensagem que seria enviada, sem chamar a API do Telegram.',
+        )
 
     def handle(self, *args, **options):
+        dry_run = options.get('dry_run', False)
         token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None)
         chat_id = getattr(settings, 'TELEGRAM_CHAT_ID', None)
 
-        if not token or not chat_id:
+        if not dry_run and (not token or not chat_id):
             self.stdout.write(self.style.WARNING(
                 'TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados. Pulando alertas.'
             ))
@@ -34,17 +108,18 @@ class Command(BaseCommand):
 
         today = date.today()
 
-        # Boletos pendentes
-        pending = Expense.objects.filter(
+        # Boletos reais pendentes + previstos (recorrentes ainda não materializados)
+        real_pending = Expense.objects.filter(
             boleto_status='pending',
             due_day__isnull=False,
         ).select_related('payment_type')
+        candidates = list(real_pending) + _build_predicted_boletos(today)
 
         overdue = []
         due_today = []
         due_3_days = []
 
-        for exp in pending:
+        for exp in candidates:
             due_date = get_boleto_due_date(exp)
             if not due_date:
                 continue
@@ -90,6 +165,11 @@ class Command(BaseCommand):
                 )
 
         message = '\n'.join(lines)
+
+        if dry_run:
+            self.stdout.write('--- DRY RUN — mensagem que seria enviada ---')
+            self.stdout.write(message)
+            return
 
         # Enviar via Telegram
         url = f'https://api.telegram.org/bot{token}/sendMessage'
