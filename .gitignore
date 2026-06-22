@@ -55,4 +55,5 @@ docs/*.md
 docs/spendingmap_data.json
 setup-desenvolvimento-arch.md
 backend/scripts/cron_dev.sh
+backend/scripts/confirmar_recorrentes.sh
 logo.png
