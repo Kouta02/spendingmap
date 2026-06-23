@@ -12,10 +12,11 @@ O projeto e um monorepo com duas aplicacoes:
 spendingmap/
 ├── backend/     # Django + Django REST Framework
 ├── frontend/    # Angular + Angular Material
+├── docker/      # Stack de producao (Docker Compose)
 └── docs/        # Documentacao local do projeto
 ```
 
-O frontend consome a API pelo prefixo `/api`. Em desenvolvimento, o proxy do Angular envia essas chamadas para o backend em `http://localhost:8003`.
+O frontend consome a API pelo prefixo `/api`. Em desenvolvimento local, o proxy do Angular envia essas chamadas para o backend em `http://localhost:8003`.
 
 ```text
 Angular
@@ -36,7 +37,7 @@ Angular
 - **Cartoes de credito**: competencia calculada pelo vencimento da fatura dentro do mes financeiro.
 - **Contracheque**: calculo de remuneracao, descontos, snapshot mensal e projecao salarial.
 - **Metas**: limite mensal por categoria ou total do mes, com status de acompanhamento.
-- **Boletos**: vencimento, status pendente/pago e alertas.
+- **Boletos**: vencimento, status pendente/pago e alertas via Telegram.
 - **Relatorios**: resumo por periodo, categorias, parcelas futuras e comparativo mensal.
 - **Autenticacao**: login com token e rotas protegidas no frontend.
 
@@ -44,13 +45,13 @@ Angular
 
 | Camada | Tecnologia |
 |---|---|
-| Backend | Django 6.0 + Django REST Framework 3.16 |
-| Banco de dados | PostgreSQL |
+| Backend | Django 6.0 + Django REST Framework 3.16 + gunicorn |
+| Banco de dados | PostgreSQL 18 |
 | Frontend | Angular 21 + Angular Material |
 | Graficos | ECharts + ngx-echarts |
 | Datas e mascaras | date-fns + ngx-mask |
-| Deploy | VPS com nginx + gunicorn + systemd |
-| SSL | Let's Encrypt |
+| Infra | Docker Compose (Postgres + Django/gunicorn + Angular/nginx) |
+| Publicacao | Cloudflare Tunnel (TLS terminado na borda) |
 | Alertas externos | Telegram Bot API |
 
 ## Estrutura do backend
@@ -59,8 +60,6 @@ Angular
 backend/
 ├── manage.py
 ├── requirements.txt
-├── runtime.txt
-├── Procfile
 ├── config/
 │   ├── urls.py
 │   ├── asgi.py
@@ -192,21 +191,38 @@ Para compras no cartao de credito, a competencia nao e a data da compra. O siste
 
 Mais detalhes em `docs/regra-mes-financeiro.md`.
 
-## Setup local
+## Execucao com Docker (producao)
 
-### Backend
+A aplicacao roda em Docker (banco + backend + frontend) e e publicada via Cloudflare Tunnel. A configuracao fica em `docker/` (detalhes em `docker/README.md`).
 
 ```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env  # se o arquivo existir no ambiente
-python manage.py migrate
-python manage.py runserver 0.0.0.0:8003
+cd docker
+cp .env.example .env   # preencha SECRET_KEY, senha do banco, TELEGRAM_* e o token do tunel
+sudo docker compose up -d                                # subir
+sudo docker compose build && sudo docker compose up -d   # rebuild apos mudar o codigo
 ```
 
-Variaveis esperadas em desenvolvimento:
+Containers: `spendingmap-db` (PostgreSQL 18), `spendingmap-api` (Django + gunicorn), `spendingmap-web` (Angular + nginx, publica a porta 8085 no host) e `spendingmap-cloudflared` (conector do tunel).
+
+> A primeira subida em banco vazio exige uma ordem especifica (subir so o `db`, restaurar o dump e so entao o restante), senao o `migrate` colide com a restauracao. Ver `docker/README.md`.
+
+## Desenvolvimento local (opcional)
+
+Para iterar sem rebuildar imagens, e possivel rodar os servidores direto (requer um PostgreSQL acessivel e `backend/.env` configurado):
+
+```bash
+# Backend (porta 8003, settings de desenvolvimento)
+cd backend && source .venv/bin/activate
+pip install -r requirements.txt
+DJANGO_SETTINGS_MODULE=config.settings.development python manage.py migrate
+DJANGO_SETTINGS_MODULE=config.settings.development python manage.py runserver 0.0.0.0:8003
+
+# Frontend (porta 4201, proxy /api -> 8003)
+cd frontend && npm install
+npx ng serve --host 0.0.0.0 --port 4201 --proxy-config proxy.conf.json
+```
+
+Variaveis esperadas em `backend/.env`:
 
 ```text
 SECRET_KEY=
@@ -219,42 +235,10 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 ```
 
-### Frontend
-
-```bash
-cd frontend
-npm install
-npx ng serve --host 0.0.0.0 --port 4201 --proxy-config proxy.conf.json
-```
-
-## Deploy
-
-O deploy documentado usa VPS com nginx, gunicorn e systemd.
-
-Fluxo resumido:
-
-```bash
-cd /srv/spendingmap
-git pull origin develop
-
-cd frontend
-npx ng build --configuration=production
-
-cd ../backend
-source .venv/bin/activate
-set -a && source .env.production && set +a
-DJANGO_SETTINGS_MODULE=config.settings.production python manage.py migrate --noinput
-DJANGO_SETTINGS_MODULE=config.settings.production python manage.py collectstatic --noinput
-sudo systemctl restart spendingmap
-```
-
-Observacao importante: `config.settings.production` importa `dj_database_url` e WhiteNoise. Se o ambiente de producao for recriado do zero usando apenas `backend/requirements.txt`, essas dependencias precisam estar listadas ou instaladas por outro mecanismo; caso contrario, o Django falhara ao carregar os settings de producao.
-
 ## Documentacao relacionada
 
-- `docs/estrutura-backend.md`: guia tecnico do backend.
+- `docker/README.md`: deploy com Docker (containers, primeira subida e cutover).
 - `docs/regra-mes-financeiro.md`: regra do mes financeiro e cartoes.
-- `docs/iniciar-servidores.md`: instrucoes locais para iniciar os servidores.
 - `docs/planejamento-app-despesas-v2.md`: planejamento historico da aplicacao.
 
 ## Branches
