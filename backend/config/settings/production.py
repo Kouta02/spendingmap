@@ -31,10 +31,20 @@ CORS_ALLOWED_ORIGINS = config(
     cast=lambda v: [s.strip() for s in v.split(',')],
 )
 
+# CSRF — origens confiáveis para POST via HTTPS (ex.: login do admin atrás de proxy/túnel).
+# Default vazio → sem efeito quando não definido (preserva o comportamento da VPS).
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='',
+    cast=lambda v: [s.strip() for s in v.split(',') if s.strip()],
+)
+
 # Security
 SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+# Cookies seguros parametrizáveis (default True = só HTTPS). Em produção HTTPS, manter True;
+# o admin via HTTP direto (Tailscale :8085) exigiria False — preferir acessar o admin por HTTPS.
+SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=True, cast=bool)
+CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=True, cast=bool)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # WhiteNoise para servir arquivos estáticos

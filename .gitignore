@@ -57,3 +57,7 @@ setup-desenvolvimento-arch.md
 backend/scripts/cron_dev.sh
 backend/scripts/confirmar_recorrentes.sh
 logo.png
+
+# === Docker ===
+# A pasta docker/ é versionada. Apenas o segredo docker/.env fica fora do Git
+# (coberto pela regra global .env acima; docker/.env.example é versionado).

@@ -1,0 +1,33 @@
+# Build context = raiz do projeto. Mantém .venv/node_modules/segredos fora das imagens.
+.git
+.gitignore
+*.md
+*.log
+*.dump
+*.sqlite3
+logo.png
+
+# Backend
+backend/.venv/
+backend/venv/
+backend/.env
+backend/.env.*
+backend/staticfiles/
+**/__pycache__/
+*.py[cod]
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Docker (não precisa no context; o compose/Dockerfiles são lidos fora do build)
+docker/.env
+docker/.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

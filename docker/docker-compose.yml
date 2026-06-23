@@ -1,0 +1,85 @@
+# =============================================================
+# SpendingMap — produção em Docker na máquina Arch (front + back + banco).
+# Uso (do diretório docker/): editar .env e depois `sudo docker compose up -d`.
+# ⚠️ PRIMEIRA subida (cutover): ver docker/README.md — a ordem importa (subir só o db,
+#    restaurar o dump, e só então o backend), senão o migrate cria schema no banco vazio
+#    e colide com a restauração.
+# Rebuild após mudar código:  sudo docker compose build && sudo docker compose up -d
+# Logs:                       sudo docker logs -f spendingmap-api
+#
+# Notas:
+# - db NÃO publica porta no host (evita conflito com o PostgreSQL 18 do sistema, 5432).
+# - backend NÃO publica porta (o nginx do frontend acessa por rede interna: http://backend:8000).
+# - frontend publica 8085 no host (acesso local/Tailscale). O Cloudflare Tunnel, quando
+#   entrar, aponta para o frontend pela rede interna — não precisa de porta no host.
+# =============================================================
+name: spendingmap
+
+services:
+  # --- PostgreSQL ---
+  db:
+    image: postgres:18
+    container_name: spendingmap-db
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # postgres:18+ exige o mount no diretório-pai (cria subpasta por versão dentro).
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Backend (Django + gunicorn) ---
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: spendingmap-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DB_HOST: db
+      DB_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Saudável quando o gunicorn está aceitando conexões na 8000 (após migrate/collectstatic).
+    # Check TCP via python (sem Host header → não esbarra em ALLOWED_HOSTS).
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; socket.create_connection(('127.0.0.1',8000),2).close()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # --- Frontend (Angular + Nginx) ---
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    container_name: spendingmap-web
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8085:80"
+
+  # --- Cloudflare Tunnel (conector) ---
+  # Publica spendingmap.com.br no Arch sem IP público. Ingress definido na Cloudflare
+  # (remotely-managed); alcança o nginx por http://frontend:80 na rede interna.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: spendingmap-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - frontend
+
+volumes:
+  db_data:

@@ -1,0 +1,24 @@
+# =============================================================
+# SpendingMap — Backend (Django 6 + gunicorn)
+# Build context = raiz do projeto (ver docker-compose.yml).
+# Caminhos de COPY são relativos à raiz.
+# =============================================================
+FROM python:3.13-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DJANGO_SETTINGS_MODULE=config.settings.production
+
+WORKDIR /app
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/ .
+
+COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+EXPOSE 8000
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120"]
