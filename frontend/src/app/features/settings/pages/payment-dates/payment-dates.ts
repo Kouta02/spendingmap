@@ -11,6 +11,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
+import { FilterStateService } from '../../../../core/services/filter-state.service';
 import { FinancialMonth, PaymentDate } from '../../../../core/models';
 
 const MONTH_NAMES = [
@@ -32,7 +33,8 @@ const MONTH_NAMES = [
       <h2>Datas de Pagamento</h2>
       <mat-form-field appearance="outline" class="year-select">
         <mat-label>Ano</mat-label>
-        <mat-select [(value)]="selectedYear" (selectionChange)="loadYear()">
+        <mat-select [value]="selectedYear()"
+                    (selectionChange)="selectedYear.set($event.value); loadYear()">
           @for (y of availableYears; track y) {
             <mat-option [value]="y">{{ y }}</mat-option>
           }
@@ -130,9 +132,10 @@ const MONTH_NAMES = [
 })
 export class PaymentDatesPage implements OnInit {
   private readonly service = inject(FinancialCalendarService);
+  private readonly filterState = inject(FilterStateService);
   private readonly snackBar = inject(MatSnackBar);
 
-  selectedYear = new Date().getFullYear();
+  selectedYear = this.filterState.persistent('paymentDates.year', new Date().getFullYear());
   availableYears = [2025, 2026, 2027, 2028, 2029];
   saving = signal(false);
   financialMonths = signal<FinancialMonth[]>([]);
@@ -148,7 +151,7 @@ export class PaymentDatesPage implements OnInit {
   }
 
   loadYear(): void {
-    this.service.getPaymentDatesByYear(this.selectedYear).subscribe((dates) => {
+    this.service.getPaymentDatesByYear(this.selectedYear()).subscribe((dates) => {
       // Resetar
       this.months.forEach((m) => (m.day = null));
       for (const pd of dates) {
@@ -170,7 +173,7 @@ export class PaymentDatesPage implements OnInit {
     }
 
     this.saving.set(true);
-    this.service.bulkUpdatePaymentDates({ year: this.selectedYear, dates }).subscribe({
+    this.service.bulkUpdatePaymentDates({ year: this.selectedYear(), dates }).subscribe({
       next: () => {
         this.snackBar.open('Datas salvas com sucesso!', 'OK', { duration: 3000 });
         this.saving.set(false);
@@ -184,7 +187,7 @@ export class PaymentDatesPage implements OnInit {
   }
 
   private loadFinancialMonths(): void {
-    this.service.getFinancialMonths(this.selectedYear).subscribe((fms) => {
+    this.service.getFinancialMonths(this.selectedYear()).subscribe((fms) => {
       this.financialMonths.set(fms);
     });
   }

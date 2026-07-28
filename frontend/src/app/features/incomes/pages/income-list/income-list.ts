@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, WritableSignal, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
@@ -10,11 +10,11 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialog } from '@angular/material/dialog';
 import { DatePipe } from '@angular/common';
-import { format, subMonths, addMonths, parse } from 'date-fns';
 
 import { IncomeService } from '../../../../core/services/income.service';
 import { ThirdPartyService } from '../../../../core/services/third-party.service';
-import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
+import { MonthStateService } from '../../../../core/services/month-state.service';
+import { FilterStateService } from '../../../../core/services/filter-state.service';
 import { Income, IncomeFilters, IncomeCategory, ThirdParty } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 import {
@@ -53,7 +53,8 @@ import {
 
       <mat-form-field appearance="outline" class="filter-field">
         <mat-label>Categoria</mat-label>
-        <mat-select [(ngModel)]="filterCategory" (selectionChange)="loadIncomes()">
+        <mat-select [ngModel]="filterCategory()" (ngModelChange)="filterCategory.set($event)"
+                    (selectionChange)="loadIncomes()">
           <mat-option value="">Todas</mat-option>
           @for (cat of categories(); track cat.id) {
             <mat-option [value]="cat.id">{{ cat.name }}</mat-option>
@@ -63,7 +64,8 @@ import {
 
       <mat-form-field appearance="outline" class="filter-field">
         <mat-label>Pessoa</mat-label>
-        <mat-select [(ngModel)]="filterThirdParty" (selectionChange)="loadIncomes()">
+        <mat-select [ngModel]="filterThirdParty()" (ngModelChange)="filterThirdParty.set($event)"
+                    (selectionChange)="loadIncomes()">
           <mat-option value="">Todos</mat-option>
           @for (tp of thirdParties(); track tp.id) {
             <mat-option [value]="tp.id">{{ tp.name }}</mat-option>
@@ -164,43 +166,48 @@ import {
 export class IncomeList implements OnInit {
   private readonly incomeService = inject(IncomeService);
   private readonly thirdPartyService = inject(ThirdPartyService);
-  private readonly financialCalendarService = inject(FinancialCalendarService);
+  private readonly monthState = inject(MonthStateService);
+  private readonly filterState = inject(FilterStateService);
   private readonly dialog = inject(MatDialog);
 
   incomes = signal<Income[]>([]);
   categories = signal<IncomeCategory[]>([]);
   thirdParties = signal<ThirdParty[]>([]);
   loading = signal(true);
-  currentMonth = signal(format(new Date(), 'yyyy-MM'));
-  monthLabel = signal('');
+  currentMonth = this.monthState.currentMonth;
+  monthLabel = this.monthState.monthLabel;
 
-  filterCategory = '';
-  filterThirdParty = '';
+  filterCategory = this.filterState.persistent('incomes.category', '');
+  filterThirdParty = this.filterState.persistent('incomes.thirdParty', '');
 
   displayedColumns = ['date', 'description', 'category', 'amount', 'actions'];
 
   ngOnInit(): void {
-    this.incomeService.listCategories().subscribe((cats) => this.categories.set(cats));
-    this.thirdPartyService.list().subscribe((tps) => this.thirdParties.set(tps));
-
-    this.financialCalendarService.getCurrentFinancialMonth().subscribe({
-      next: (fm) => {
-        this.currentMonth.set(format(new Date(fm.year, fm.month - 1, 1), 'yyyy-MM'));
-        this.updateMonthLabel();
-        this.loadIncomes();
-      },
-      error: () => {
-        this.updateMonthLabel();
-        this.loadIncomes();
-      },
+    this.incomeService.listCategories().subscribe((cats) => {
+      this.categories.set(cats);
+      this.dropOrphanFilter(this.filterCategory, cats.map((c) => c.id));
     });
+    this.thirdPartyService.list().subscribe((tps) => {
+      this.thirdParties.set(tps);
+      this.dropOrphanFilter(this.filterThirdParty, tps.map((t) => t.id));
+    });
+
+    this.monthState.init().then(() => this.loadIncomes());
+  }
+
+  /** Descarta filtro restaurado que aponta para um registro que não existe mais. */
+  private dropOrphanFilter(filter: WritableSignal<string>, validIds: string[]): void {
+    if (filter() && !validIds.includes(filter())) {
+      filter.set('');
+      this.loadIncomes();
+    }
   }
 
   loadIncomes(): void {
     this.loading.set(true);
     const filters: IncomeFilters = { month: this.currentMonth(), ordering: '-date' };
-    if (this.filterCategory) filters.category = this.filterCategory;
-    if (this.filterThirdParty) filters.third_party = this.filterThirdParty;
+    if (this.filterCategory()) filters.category = this.filterCategory();
+    if (this.filterThirdParty()) filters.third_party = this.filterThirdParty();
 
     this.incomeService.list(filters).subscribe({
       next: (incomes) => { this.incomes.set(incomes); this.loading.set(false); },
@@ -213,22 +220,13 @@ export class IncomeList implements OnInit {
   }
 
   prevMonth(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.currentMonth.set(format(subMonths(d, 1), 'yyyy-MM'));
-    this.updateMonthLabel();
+    this.monthState.prevMonth();
     this.loadIncomes();
   }
 
   nextMonth(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.currentMonth.set(format(addMonths(d, 1), 'yyyy-MM'));
-    this.updateMonthLabel();
+    this.monthState.nextMonth();
     this.loadIncomes();
-  }
-
-  private updateMonthLabel(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.monthLabel.set(d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }));
   }
 
   confirmDelete(income: Income): void {

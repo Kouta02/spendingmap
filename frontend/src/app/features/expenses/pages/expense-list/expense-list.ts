@@ -1,4 +1,4 @@
-import { Component, OnInit, HostListener, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, HostListener, WritableSignal, inject, signal, computed } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
@@ -16,6 +16,7 @@ import { ExpenseService } from '../../../../core/services/expense.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { ThirdPartyService } from '../../../../core/services/third-party.service';
 import { MonthStateService } from '../../../../core/services/month-state.service';
+import { FilterStateService } from '../../../../core/services/filter-state.service';
 import { IncomeService } from '../../../../core/services/income.service';
 import { Expense, ExpenseFilters, CategoryFlat, ThirdParty, Income } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
@@ -74,7 +75,8 @@ interface ColumnFilter {
 
       <mat-form-field appearance="outline" class="filter-field">
         <mat-label>Categoria</mat-label>
-        <mat-select [(ngModel)]="filterCategory" (selectionChange)="loadExpenses()">
+        <mat-select [ngModel]="filterCategory()" (ngModelChange)="filterCategory.set($event)"
+                    (selectionChange)="loadExpenses()">
           <mat-option value="">Todas</mat-option>
           @for (group of categoryGroups(); track group.root.id) {
             @if (group.children.length > 0) {
@@ -93,7 +95,8 @@ interface ColumnFilter {
 
       <mat-form-field appearance="outline" class="filter-field">
         <mat-label>Pessoa</mat-label>
-        <mat-select [(ngModel)]="filterThirdParty" (selectionChange)="loadExpenses()">
+        <mat-select [ngModel]="filterThirdParty()" (ngModelChange)="filterThirdParty.set($event)"
+                    (selectionChange)="loadExpenses()">
           <mat-option value="">Todos</mat-option>
           @for (tp of thirdParties(); track tp.id) {
             <mat-option [value]="tp.id">{{ tp.name }}</mat-option>
@@ -763,6 +766,7 @@ export class ExpenseList implements OnInit {
   private readonly categoryService = inject(CategoryService);
   private readonly thirdPartyService = inject(ThirdPartyService);
   private readonly monthState = inject(MonthStateService);
+  private readonly filterState = inject(FilterStateService);
   private readonly incomeService = inject(IncomeService);
   private readonly dialog = inject(MatDialog);
   private readonly router = inject(Router);
@@ -784,11 +788,11 @@ export class ExpenseList implements OnInit {
   currentMonth = this.monthState.currentMonth;
   monthLabel = this.monthState.monthLabel;
 
-  filterCategory = '';
-  filterThirdParty = '';
-  filterRecurrence = signal<string>('');
-  filterPredicted = signal<string>('');
-  groupBy = signal('');
+  filterCategory = this.filterState.persistent('expenses.category', '');
+  filterThirdParty = this.filterState.persistent('expenses.thirdParty', '');
+  filterRecurrence = this.filterState.persistent('expenses.recurrence', '');
+  filterPredicted = this.filterState.persistent('expenses.predicted', '');
+  groupBy = this.filterState.persistent('expenses.groupBy', '');
   expandedGroups = signal<Set<string>>(new Set());
 
   displayedColumns = [
@@ -811,9 +815,10 @@ export class ExpenseList implements OnInit {
 
   activeFilterColumn = signal<string | null>(null);
   filterPanelPos = signal({ top: 0, left: 0 });
-  sortColumn = signal<string | null>(null);
-  sortDir = signal<'asc' | 'desc'>('asc');
-  columnFilters = signal<Record<string, ColumnFilter>>({});
+  sortColumn = this.filterState.persistent<string | null>('expenses.sortColumn', null);
+  sortDir = this.filterState.persistent<'asc' | 'desc'>('expenses.sortDir', 'asc');
+  columnFilters = this.filterState.persistent<Record<string, ColumnFilter>>('expenses.columnFilters', {});
+  private columnFiltersMonth = this.filterState.persistent('expenses.columnFiltersMonth', '');
 
   distinctValues = computed(() => {
     const expenses = this.expenses();
@@ -1125,24 +1130,47 @@ export class ExpenseList implements OnInit {
   // ========== Funcionalidades existentes ==========
 
   ngOnInit(): void {
-    this.categoryService.flat().subscribe((cats) => this.categories.set(cats));
-    this.thirdPartyService.list().subscribe((tps) => this.thirdParties.set(tps));
+    this.categoryService.flat().subscribe((cats) => {
+      this.categories.set(cats);
+      this.dropOrphanFilter(this.filterCategory, cats.map((c) => c.id));
+    });
+    this.thirdPartyService.list().subscribe((tps) => {
+      this.thirdParties.set(tps);
+      this.dropOrphanFilter(this.filterThirdParty, tps.map((t) => t.id));
+    });
 
     this.monthState.init().then(() => this.loadExpenses());
   }
 
+  /** Descarta filtro restaurado que aponta para um registro que não existe mais. */
+  private dropOrphanFilter(filter: WritableSignal<string>, validIds: string[]): void {
+    if (filter() && !validIds.includes(filter())) {
+      filter.set('');
+      this.loadExpenses();
+    }
+  }
+
   loadExpenses(): void {
     this.loading.set(true);
-    this.columnFilters.set({});
-    this.sortColumn.set(null);
     this.closeFilter();
+
+    // O filtro da coluna Data não sobrevive à troca de mês: datas de um mês
+    // nunca existem no outro e a tabela ficaria vazia sem indicação do motivo.
+    if (this.columnFiltersMonth() !== this.currentMonth()) {
+      const current = { ...this.columnFilters() };
+      if (current['date']) {
+        delete current['date'];
+        this.columnFilters.set(current);
+      }
+      this.columnFiltersMonth.set(this.currentMonth());
+    }
 
     const filters: ExpenseFilters = {
       month: this.currentMonth(),
       ordering: '-date',
     };
-    if (this.filterCategory) filters.category = this.filterCategory;
-    if (this.filterThirdParty) filters.third_party = this.filterThirdParty;
+    if (this.filterCategory()) filters.category = this.filterCategory();
+    if (this.filterThirdParty()) filters.third_party = this.filterThirdParty();
 
     this.expenseService.list(filters).subscribe({
       next: (expenses) => {

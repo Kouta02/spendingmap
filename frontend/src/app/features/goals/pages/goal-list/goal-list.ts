@@ -19,11 +19,10 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatCardModule } from '@angular/material/card';
 import { NgxMaskDirective } from 'ngx-mask';
-import { format, subMonths, addMonths, parse } from 'date-fns';
 
 import { GoalService } from '../../../../core/services/goal.service';
 import { CategoryService } from '../../../../core/services/category.service';
-import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
+import { MonthStateService } from '../../../../core/services/month-state.service';
 import { Goal, GoalCreate, CategoryFlat } from '../../../../core/models';
 import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
 import {
@@ -238,7 +237,7 @@ import {
 export class GoalList implements OnInit {
   private readonly goalService = inject(GoalService);
   private readonly categoryService = inject(CategoryService);
-  private readonly financialCalendarService = inject(FinancialCalendarService);
+  private readonly monthState = inject(MonthStateService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly fb = inject(FormBuilder);
@@ -248,8 +247,8 @@ export class GoalList implements OnInit {
   loading = signal(true);
   saving = signal(false);
   editingId = signal<string | null>(null);
-  currentMonth = signal(format(new Date(), 'yyyy-MM'));
-  monthLabel = signal('');
+  currentMonth = this.monthState.currentMonth;
+  monthLabel = this.monthState.monthLabel;
 
   Math = Math;
 
@@ -262,17 +261,7 @@ export class GoalList implements OnInit {
   ngOnInit(): void {
     this.categoryService.flat().subscribe((cats) => this.categories.set(cats));
 
-    this.financialCalendarService.getCurrentFinancialMonth().subscribe({
-      next: (fm) => {
-        this.currentMonth.set(format(new Date(fm.year, fm.month - 1, 1), 'yyyy-MM'));
-        this.updateMonthLabel();
-        this.loadGoals();
-      },
-      error: () => {
-        this.updateMonthLabel();
-        this.loadGoals();
-      },
-    });
+    this.monthState.init().then(() => this.loadGoals());
   }
 
   loadGoals(): void {
@@ -354,24 +343,13 @@ export class GoalList implements OnInit {
   }
 
   prevMonth(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.currentMonth.set(format(subMonths(d, 1), 'yyyy-MM'));
-    this.updateMonthLabel();
+    this.monthState.prevMonth();
     this.loadGoals();
   }
 
   nextMonth(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.currentMonth.set(format(addMonths(d, 1), 'yyyy-MM'));
-    this.updateMonthLabel();
+    this.monthState.nextMonth();
     this.loadGoals();
-  }
-
-  private updateMonthLabel(): void {
-    const d = parse(this.currentMonth(), 'yyyy-MM', new Date());
-    this.monthLabel.set(
-      d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-    );
   }
 
   toNum(val: string | undefined | null): number {

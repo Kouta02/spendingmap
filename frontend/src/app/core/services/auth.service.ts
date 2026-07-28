@@ -3,6 +3,8 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { FilterStateService } from './filter-state.service';
+import { MonthStateService } from './month-state.service';
 
 interface LoginResponse {
   token: string;
@@ -12,6 +14,8 @@ interface LoginResponse {
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly filterState = inject(FilterStateService);
+  private readonly monthState = inject(MonthStateService);
   private readonly TOKEN_KEY = 'sm_token';
 
   isAuthenticated = signal(this.hasToken());
@@ -29,7 +33,8 @@ export class AuthService {
 
   logout(): void {
     sessionStorage.removeItem(this.TOKEN_KEY);
-    sessionStorage.removeItem('sm_selected_month');
+    this.monthState.clear();
+    this.filterState.clearAll();
     this.isAuthenticated.set(false);
     this.router.navigate(['/login']);
   }

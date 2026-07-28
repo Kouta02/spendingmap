@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, WritableSignal, inject, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
@@ -19,6 +19,7 @@ import { format } from 'date-fns';
 import { ReportService } from '../../../../core/services/report.service';
 import { FinancialCalendarService } from '../../../../core/services/financial-calendar.service';
 import { PaymentTypeService } from '../../../../core/services/payment-type.service';
+import { FilterStateService, PersistentOptions } from '../../../../core/services/filter-state.service';
 import {
   ReportSummary,
   ReportByCategory,
@@ -102,19 +103,22 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
           <div class="date-filters">
             <mat-form-field appearance="outline">
               <mat-label>Início</mat-label>
-              <input matInput [matDatepicker]="startPicker" [(ngModel)]="startDate" />
+              <input matInput [matDatepicker]="startPicker"
+                     [ngModel]="startDate()" (ngModelChange)="onDateChange(startDate, $event)" />
               <mat-datepicker-toggle matIconSuffix [for]="startPicker" />
               <mat-datepicker #startPicker />
             </mat-form-field>
             <mat-form-field appearance="outline">
               <mat-label>Fim</mat-label>
-              <input matInput [matDatepicker]="endPicker" [(ngModel)]="endDate" />
+              <input matInput [matDatepicker]="endPicker"
+                     [ngModel]="endDate()" (ngModelChange)="onDateChange(endDate, $event)" />
               <mat-datepicker-toggle matIconSuffix [for]="endPicker" />
               <mat-datepicker #endPicker />
             </mat-form-field>
             <mat-form-field appearance="outline" class="filter-pt">
               <mat-label>Tipo Pagamento</mat-label>
-              <mat-select [(ngModel)]="selectedPaymentTypes" multiple>
+              <mat-select [ngModel]="selectedPaymentTypes()"
+                          (ngModelChange)="selectedPaymentTypes.set($event)" multiple>
                 @for (pt of paymentTypes(); track pt.id) {
                   <mat-option [value]="pt.id">{{ pt.name }}</mat-option>
                 }
@@ -123,7 +127,8 @@ import { CurrencyBrlPipe } from '../../../../shared/pipes/currency-brl.pipe';
             <button mat-flat-button (click)="loadByCategory()">
               <mat-icon>search</mat-icon> Filtrar
             </button>
-            <mat-checkbox [(ngModel)]="groupCategories">Agrupar Categorias</mat-checkbox>
+            <mat-checkbox [ngModel]="groupCategories()"
+                          (ngModelChange)="groupCategories.set($event)">Agrupar Categorias</mat-checkbox>
           </div>
 
           @if (loadingCategory()) {
@@ -424,9 +429,10 @@ export class ReportsPage implements OnInit {
   private readonly reportService = inject(ReportService);
   private readonly financialCalendarService = inject(FinancialCalendarService);
   private readonly paymentTypeService = inject(PaymentTypeService);
+  private readonly filterState = inject(FilterStateService);
 
   paymentTypes = signal<PaymentType[]>([]);
-  selectedPaymentTypes: string[] = [];
+  selectedPaymentTypes = this.filterState.persistent<string[]>('reports.paymentTypes', []);
 
   loadingComparison = signal(true);
   loadingCategory = signal(false);
@@ -439,10 +445,10 @@ export class ReportsPage implements OnInit {
   comparisonCols = ['month_label', 'receita_liquida', 'total_despesas', 'saldo', 'quantidade_despesas'];
   expenseDetailCols = ['date', 'description', 'category', 'payment_type', 'amount'];
 
-  groupCategories = false;
+  groupCategories = this.filterState.persistent('reports.groupCategories', false);
   expandedCategories = signal<Set<string>>(new Set());
-  catSortColumn = signal<string | null>(null);
-  catSortDir = signal<'asc' | 'desc'>('asc');
+  catSortColumn = this.filterState.persistent<string | null>('reports.catSortColumn', null);
+  catSortDir = this.filterState.persistent<'asc' | 'desc'>('reports.catSortDir', 'asc');
   selectedCategoryId = signal<string | null>(null);
   selectedCategoryName = signal('');
   categoryExpenses = signal<Expense[]>([]);
@@ -452,7 +458,7 @@ export class ReportsPage implements OnInit {
     const report = this.categoryReport();
     if (!report?.data) return [];
 
-    if (!this.groupCategories) return report.data as any[];
+    if (!this.groupCategories()) return report.data as any[];
 
     const items = report.data;
     const parentIds = new Set(items.filter(i => i.parent_id).map(i => i.parent_id!));
@@ -560,24 +566,41 @@ export class ReportsPage implements OnInit {
     return result;
   });
 
-  startDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  endDate = new Date();
+  private static readonly DATE_OPTS: PersistentOptions<Date> = {
+    serialize: (d) => (d ? format(d, 'yyyy-MM-dd') : null),
+    deserialize: (raw) => (raw ? new Date(String(raw) + 'T00:00:00') : new Date()),
+  };
+
+  startDate = this.filterState.persistent(
+    'reports.startDate',
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    ReportsPage.DATE_OPTS,
+  );
+  endDate = this.filterState.persistent('reports.endDate', new Date(), ReportsPage.DATE_OPTS);
 
   ngOnInit(): void {
     this.paymentTypeService.list().subscribe((pts) => this.paymentTypes.set(pts));
     this.loadComparison();
+
+    // Só busca o período padrão (mês financeiro corrente) se não há datas salvas na sessão
+    if (this.filterState.has('reports.startDate')) return;
 
     this.financialCalendarService.getCurrentFinancialMonth().subscribe({
       next: (fm) => {
         this.financialCalendarService.getFinancialMonths(fm.year).subscribe((months) => {
           const current = months.find((m) => m.month === fm.month);
           if (current) {
-            this.startDate = new Date(current.start + 'T00:00:00');
-            this.endDate = new Date(current.end + 'T00:00:00');
+            this.startDate.set(new Date(current.start + 'T00:00:00'));
+            this.endDate.set(new Date(current.end + 'T00:00:00'));
           }
         });
       },
     });
+  }
+
+  /** O datepicker emite null quando o campo é apagado — ignorar evita persistir data inválida. */
+  onDateChange(target: WritableSignal<Date>, value: Date | null): void {
+    if (value) target.set(value);
   }
 
   onTabChange(index: number): void {
@@ -600,9 +623,9 @@ export class ReportsPage implements OnInit {
   loadByCategory(): void {
     this.loadingCategory.set(true);
     this.closeCategoryExpenses();
-    const start = format(this.startDate, 'yyyy-MM-dd');
-    const end = format(this.endDate, 'yyyy-MM-dd');
-    const pts = this.selectedPaymentTypes.length ? this.selectedPaymentTypes : undefined;
+    const start = format(this.startDate(), 'yyyy-MM-dd');
+    const end = format(this.endDate(), 'yyyy-MM-dd');
+    const pts = this.selectedPaymentTypes().length ? this.selectedPaymentTypes() : undefined;
     this.reportService.getByCategory(start, end, pts).subscribe({
       next: (data) => { this.categoryReport.set(data); this.loadingCategory.set(false); },
       error: () => this.loadingCategory.set(false),
@@ -655,11 +678,11 @@ export class ReportsPage implements OnInit {
     this.categoryExpenses.set([]);
     this.loadingCategoryExpenses.set(true);
 
-    const start = format(this.startDate, 'yyyy-MM-dd');
-    const end = format(this.endDate, 'yyyy-MM-dd');
+    const start = format(this.startDate(), 'yyyy-MM-dd');
+    const end = format(this.endDate(), 'yyyy-MM-dd');
     const isGroup = !!item._isGroup;
 
-    const pts = this.selectedPaymentTypes.length ? this.selectedPaymentTypes : undefined;
+    const pts = this.selectedPaymentTypes().length ? this.selectedPaymentTypes() : undefined;
 
     this.reportService.getExpensesByCategory(start, end, item.category_id, isGroup, pts).subscribe({
       next: (data) => {
