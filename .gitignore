@@ -56,6 +56,8 @@ docs/spendingmap_data.json
 setup-desenvolvimento-arch.md
 backend/scripts/cron_dev.sh
 backend/scripts/confirmar_recorrentes.sh
+backend/scripts/backup_db.sh
+Nubank_*.csv
 logo.png
 
 # === Docker ===
