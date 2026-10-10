@@ -1,4 +1,5 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, inject, signal, computed, DestroyRef, ElementRef, viewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   FormBuilder,
@@ -9,6 +10,7 @@ import {
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -20,6 +22,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { NgxMaskDirective } from 'ngx-mask';
 import { format } from 'date-fns';
+import { of } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map, switchMap } from 'rxjs/operators';
 
 import { MatDialog } from '@angular/material/dialog';
 import { ExpenseService } from '../../../../core/services/expense.service';
@@ -29,6 +33,7 @@ import { FinancialCalendarService } from '../../../../core/services/financial-ca
 import { ThirdPartyService } from '../../../../core/services/third-party.service';
 import { CategoryFlat, PaymentType, CreditCard, ThirdParty, ExpenseCreate } from '../../../../core/models';
 import { CategoryDialog, CategoryDialogData } from '../../../../shared/components/category-dialog/category-dialog';
+import { normalizeSearchText } from '../../../../shared/utils/text';
 
 @Component({
   selector: 'app-expense-form',
@@ -39,6 +44,7 @@ import { CategoryDialog, CategoryDialogData } from '../../../../shared/component
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
+    MatAutocompleteModule,
     MatButtonModule,
     MatIconModule,
     MatDatepickerModule,
@@ -70,7 +76,12 @@ import { CategoryDialog, CategoryDialogData } from '../../../../shared/component
         <!-- 1ª linha: Descrição -->
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Descrição</mat-label>
-          <input matInput formControlName="description" />
+          <input matInput formControlName="description" [matAutocomplete]="descriptionAuto" />
+          <mat-autocomplete #descriptionAuto="matAutocomplete">
+            @for (suggestion of descriptionSuggestions(); track suggestion) {
+              <mat-option [value]="suggestion">{{ suggestion }}</mat-option>
+            }
+          </mat-autocomplete>
           @if (form.get('description')?.hasError('required')) {
             <mat-error>Descrição é obrigatória</mat-error>
           }
@@ -245,12 +256,29 @@ import { CategoryDialog, CategoryDialogData } from '../../../../shared/component
         <div class="category-row">
           <mat-form-field appearance="outline" class="category-field">
             <mat-label>Categoria</mat-label>
-            <mat-select formControlName="category">
-              <mat-option [value]="null">Nenhuma</mat-option>
+            <mat-select formControlName="category" (openedChange)="onCategorySelectToggle($event)">
+              <div class="category-search">
+                <mat-icon>search</mat-icon>
+                <input
+                  #categorySearchInput
+                  type="text"
+                  placeholder="Buscar categoria (mín. 3 letras)"
+                  [value]="categorySearch()"
+                  (input)="categorySearch.set(categorySearchInput.value)"
+                  (keydown)="onCategorySearchKeydown($event)"
+                />
+              </div>
+              @if (!isSearchingCategory()) {
+                <mat-option [value]="null">Nenhuma</mat-option>
+              } @else if (categoryGroups().length === 0) {
+                <mat-option disabled>Nenhuma categoria encontrada</mat-option>
+              }
               @for (group of categoryGroups(); track group.root.id) {
-                @if (group.children.length > 0) {
+                @if (group.hasChildren) {
                   <mat-optgroup [label]="group.root.name">
-                    <mat-option [value]="group.root.id">{{ group.root.name }} (geral)</mat-option>
+                    @if (group.rootMatches) {
+                      <mat-option [value]="group.root.id">{{ group.root.name }} (geral)</mat-option>
+                    }
                     @for (child of group.children; track child.id) {
                       <mat-option [value]="child.id">{{ child.name }}</mat-option>
                     }
@@ -329,6 +357,25 @@ import { CategoryDialog, CategoryDialogData } from '../../../../shared/component
     .category-field {
       flex: 1;
     }
+    .category-search {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--mat-select-panel-background-color, #fff);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+    }
+    .category-search input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      font: inherit;
+      color: inherit;
+    }
     .add-category-btn {
       margin-top: 8px;
     }
@@ -360,21 +407,37 @@ export class ExpenseForm implements OnInit {
   private readonly thirdPartyService = inject(ThirdPartyService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  private readonly destroyRef = inject(DestroyRef);
 
   categories = signal<CategoryFlat[]>([]);
+  descriptionSuggestions = signal<string[]>([]);
   paymentTypes = signal<PaymentType[]>([]);
   creditCards = signal<CreditCard[]>([]);
   thirdParties = signal<ThirdParty[]>([]);
   showCreditCardField = signal(false);
   showDueDayField = signal(false);
 
+  categorySearch = signal('');
+  isSearchingCategory = computed(() => this.categorySearch().trim().length >= 3);
+  private readonly categorySearchInput = viewChild<ElementRef<HTMLInputElement>>('categorySearchInput');
+
+  /**
+   * Grupos de categoria (raiz + filhas). Com busca ativa (3+ letras), mantém só
+   * as categorias cujo nome contém o texto; a raiz vira cabeçalho do grupo
+   * quando só as filhas casam, e aparece como "(geral)" quando ela mesma casa.
+   */
   categoryGroups = computed(() => {
     const cats = this.categories();
+    const query = this.isSearchingCategory() ? normalizeSearchText(this.categorySearch().trim()) : '';
+    const matches = (c: CategoryFlat) => !query || normalizeSearchText(c.name).includes(query);
     const roots = cats.filter((c) => !c.parent);
-    return roots.map((root) => {
-      const children = cats.filter((c) => c.parent === root.id);
-      return { root, children };
-    });
+    return roots
+      .map((root) => {
+        const allChildren = cats.filter((c) => c.parent === root.id);
+        const children = allChildren.filter(matches);
+        return { root, children, hasChildren: allChildren.length > 0, rootMatches: matches(root) };
+      })
+      .filter((group) => group.rootMatches || group.children.length > 0);
   });
   isEditing = signal(false);
   isEditingInstallment = signal(false);
@@ -405,6 +468,7 @@ export class ExpenseForm implements OnInit {
   });
 
   ngOnInit(): void {
+    this.watchDescriptionSuggestions();
     this.categoryService.flat().subscribe((cats) => this.categories.set(cats));
     this.paymentTypeService.list().subscribe((pts) => {
       this.paymentTypes.set(pts);
@@ -545,6 +609,41 @@ export class ExpenseForm implements OnInit {
       return parseFloat(str.replace(/\./g, '').replace(',', '.'));
     }
     return parseFloat(str);
+  }
+
+  /** Sugere descrições já usadas a partir de 3 caracteres digitados. */
+  private watchDescriptionSuggestions(): void {
+    this.form.get('description')!.valueChanges.pipe(
+      map((value: string | null) => (value ?? '').trim()),
+      debounceTime(250),
+      distinctUntilChanged(),
+      switchMap((query) =>
+        query.length < 3
+          ? of([])
+          : this.expenseService.descriptionSuggestions(query).pipe(catchError(() => of([]))),
+      ),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe((suggestions) => this.descriptionSuggestions.set(suggestions));
+  }
+
+  /** Ao abrir o dropdown de categoria, foca a busca; ao fechar, limpa o filtro. */
+  onCategorySelectToggle(opened: boolean): void {
+    if (opened) {
+      this.categorySearchInput()?.nativeElement.focus();
+    } else {
+      this.categorySearch.set('');
+    }
+  }
+
+  /**
+   * Impede que o mat-select trate as teclas digitadas na busca (espaço
+   * selecionaria a opção ativa; letras disparariam o typeahead). Setas, Enter,
+   * Esc e Tab seguem para o select, mantendo a navegação pelo teclado.
+   */
+  onCategorySearchKeydown(event: KeyboardEvent): void {
+    if (!['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(event.key)) {
+      event.stopPropagation();
+    }
   }
 
   openNewCategory(): void {

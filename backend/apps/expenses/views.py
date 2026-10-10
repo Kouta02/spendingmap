@@ -1,7 +1,9 @@
+import unicodedata
 import uuid
 from datetime import date
 from decimal import Decimal
 
+from django.db.models import Count, Max
 from rest_framework import status
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
@@ -17,6 +19,12 @@ from apps.financial_calendar.services import (
 from .filters import ExpenseFilter
 from .models import Expense
 from .serializers import ExpenseSerializer
+
+
+def _normalize(text):
+    """Minúsculas e sem acentos, para comparação de buscas."""
+    decomposed = unicodedata.normalize('NFKD', text.casefold())
+    return ''.join(c for c in decomposed if not unicodedata.combining(c))
 
 
 class ExpenseViewSet(ModelViewSet):
@@ -251,6 +259,31 @@ class ExpenseViewSet(ModelViewSet):
             })
 
         return virtual
+
+    @action(detail=False, methods=['get'], url_path='description-suggestions')
+    def description_suggestions(self, request):
+        """
+        Sugere descrições já usadas que contenham o texto informado.
+        Query param: ?q=texto (mínimo 3 caracteres). Ignora maiúsculas e acentos.
+        Retorna até 6 descrições distintas, das mais usadas às mais recentes.
+        """
+        query = _normalize(request.query_params.get('q', '').strip())
+        if len(query) < 3:
+            return Response([])
+
+        # .order_by() vazio: evita que o Meta.ordering entre no GROUP BY
+        grouped = (
+            Expense.objects
+            .order_by()
+            .values('description')
+            .annotate(uses=Count('id'), last_date=Max('date'))
+            .order_by('-uses', '-last_date')
+        )
+        suggestions = [
+            row['description'] for row in grouped
+            if query in _normalize(row['description'])
+        ][:6]
+        return Response(suggestions)
 
     @action(detail=True, methods=['delete'], url_path='delete-installments')
     def delete_installments(self, request, pk=None):

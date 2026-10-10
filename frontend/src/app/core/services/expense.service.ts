@@ -60,6 +60,11 @@ export class ExpenseService {
     return this.http.post<Expense>(`${this.baseUrl}${id}/mark-paid/`, body);
   }
 
+  descriptionSuggestions(query: string): Observable<string[]> {
+    const params = new HttpParams().set('q', query);
+    return this.http.get<string[]>(`${this.baseUrl}description-suggestions/`, { params });
+  }
+
   getBoletoAlerts(): Observable<BoletoAlert[]> {
     return this.http.get<BoletoAlert[]>(`${this.baseUrl}boleto-alerts/`);
   }
